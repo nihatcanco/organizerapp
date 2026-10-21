@@ -50,6 +50,80 @@ java -jar build/libs/organizer.jar
 
 The jar is self-contained, so you can copy it to a home server or Raspberry Pi (anything with Java 21+).
 
+## Deploying on Windows with Jenkins
+
+The `Jenkinsfile` builds the app, runs the tests and installs the result on the Windows machine that
+ran the build. The app runs as a scheduled task under the SYSTEM account and starts with Windows,
+even when nobody is logged in. Installing and updating are done by
+[`deploy/windows/deploy.ps1`](deploy/windows/deploy.ps1), which you can also run without Jenkins.
+
+Each deploy:
+
+1. stops the running app and backs up the database to `C:\Organizer\backups\` (the last 5 are kept),
+2. copies in the new `organizer.jar`,
+3. registers the scheduled task and lets port 8080 through the firewall on private and domain
+   networks (not public ones),
+4. starts the app and waits until it answers; if it doesn't, the build fails and shows the log.
+
+Your data stays in `C:\Organizer\data\` between deploys, and logs are in `C:\Organizer\logs\`.
+To go back to a backup:
+
+1. Stop the app (`deploy.ps1 -Stop`, see below).
+2. Delete the `organizer.db*` files in `data\`.
+3. Copy in the files from the backup folder (`organizer.db`, and `organizer.db-wal` if there is one).
+4. Start the app with `Start-ScheduledTask Organizer`.
+
+**The Windows machine needs:**
+
+- Windows 10/11 or Windows Server 2019 or newer, 64-bit (x64).
+- JDK 21 (for example [Temurin 21](https://adoptium.net)), with `JAVA_HOME` set as a *system*
+  environment variable. The build and the installed app both use it.
+- [Git for Windows](https://git-scm.com/download/win).
+- The [Microsoft Visual C++ Redistributable](https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist)
+  (x64), which ONNX Runtime needs for photo reading. Many PCs already have it.
+- A Jenkins agent with the label `windows`. It has to run as an administrator, for example
+  as LocalSystem, because it registers a scheduled task and a firewall rule.
+
+**Job parameters** (they appear after the first build): `DEPLOY` (turn it off to only build and
+test), `DEPLOY_DIR` (default `C:\Organizer`), `PORT`, `PUBLIC_URL`, `AI` and
+`PASSWORD_CREDENTIALS_ID`. For a password, add a *Secret text* credential in Jenkins (*Manage Jenkins
+› Credentials*) and put its ID in `PASSWORD_CREDENTIALS_ID`. In a multibranch job, only `main` is
+deployed.
+
+### Running Jenkins on your own Windows PC
+
+1. Install JDK 21 and Git for Windows, and set `JAVA_HOME` as a system variable.
+2. Install [Jenkins LTS for Windows](https://www.jenkins.io/download/). In the installer:
+   - choose **Run service as LocalSystem**;
+   - change the port to something other than 8080, for example **8090**, because Organizer uses 8080;
+   - pick your JDK 21.
+3. Open `http://localhost:8090`, unlock Jenkins with the password the installer shows, and choose
+   **Install suggested plugins**.
+4. Go to *Manage Jenkins › Nodes › Built-In Node › Configure*, set **Labels** to `windows` and
+   **Number of executors** to at least 1.
+5. Create the job with *New Item › Pipeline*. Under **Pipeline**, choose *Pipeline script from SCM*,
+   then *Git*, and enter the repository URL. Set the branch to `*/main` and the script path to
+   `Jenkinsfile`. To build from a folder on the same PC instead of a remote repository, add
+   `-Dhudson.plugins.git.GitSCM.ALLOW_LOCAL_CHECKOUT=true` to the `<arguments>` in
+   `C:\Program Files\Jenkins\jenkins.xml`, restart the Jenkins service, and use the folder path,
+   such as `C:\src\organizerapp`, as the URL.
+6. Click **Build Now**. When it finishes, Organizer is at `http://localhost:8080`. Later builds
+   show **Build with Parameters**.
+
+### Without Jenkins
+
+In an administrator PowerShell, in the project folder:
+
+```powershell
+.\gradlew.bat buildFatJar
+powershell -ExecutionPolicy Bypass -File deploy\windows\deploy.ps1 -Jar build\libs\organizer.jar
+```
+
+Add `-Port`, `-DeployDir`, `-PublicUrl` or `-AI off` to change the defaults. For a password, set
+`$env:ORGANIZER_PASSWORD = '…'` first. `-Stop` stops the app until Windows restarts
+(`Start-ScheduledTask Organizer` starts it again). `-Uninstall` also removes the scheduled task
+and the firewall rule; your data stays in the deploy folder.
+
 ## Configuration
 
 Everything is optional and set through environment variables:
@@ -113,6 +187,27 @@ Everything, photos included, is in one SQLite file (`data/organizer.db` by defau
 - **Backup:** use *Download backup* at the bottom of any page. It's safe to do while the app is
   in use. To restore, stop the app and put the downloaded file in place of `organizer.db`.
 - **Export:** *Export CSV* gives you all items for a spreadsheet.
+
+## Offline and private
+
+The app needs no internet connection and has no accounts, analytics or update checks. Pages load
+nothing from other sites (no CDNs or web fonts, and the browser is told to block anything that
+isn't from the app itself), and photos are read on your computer.
+
+The internet is used only twice:
+
+- **Building** (`./gradlew run` or `buildFatJar`) downloads Gradle and the libraries once. The
+  built jar doesn't need them.
+- **The AI model download**, which happens only when you agree to it, fetches the model from
+  Hugging Face once. If you don't use "Fill in from photo", set `ORGANIZER_AI=off` and the app
+  makes no outside connections at all.
+
+To set up the model on a machine without internet, download these five files from
+[the pinned version](https://huggingface.co/onnx-community/Florence-2-base-ft/tree/e88a44eaf3791a35eae0c5a47b3dbcd36e67eb6f)
+and put them, without their folders, in `data/models/florence-2-base-ft/`:
+`tokenizer.json`, `onnx/vision_encoder.onnx`, `onnx/embed_tokens_quantized.onnx`,
+`onnx/encoder_model_quantized.onnx` and `onnx/decoder_model_merged_quantized.onnx`. You can also
+copy that folder from a machine where the app downloaded it. The app finds the files on startup.
 
 ## Security
 
