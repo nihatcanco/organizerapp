@@ -116,7 +116,9 @@
   // ---------- Photos: shrink camera photos before uploading, and preview them ----------
 
   for (const input of document.querySelectorAll('input[data-photo-input]')) {
-    input.addEventListener('change', () => preparePhoto(input));
+    input.addEventListener('change', () => {
+      input.photoReady = preparePhoto(input).finally(() => input.dispatchEvent(new Event('photo-ready')));
+    });
   }
 
   async function preparePhoto(input) {
@@ -179,6 +181,137 @@
     transfer.items.add(file);
     input.files = transfer.files;
   }
+
+  // ---------- Fill in item details from a photo, read by the AI model on the server ----------
+
+  for (const button of document.querySelectorAll('[data-read-photo]')) {
+    const form = button.form;
+    const photoInput = form.querySelector('input[data-photo-input]');
+    const update = () => { button.disabled = !(photoInput.files.length || button.dataset.readPhoto); };
+    button.closest('.ai-reader').hidden = false;
+    update();
+    button.addEventListener('click', () => readPhoto(button));
+    photoInput.addEventListener('photo-ready', async () => {
+      update();
+      // Once the model is downloaded, a new item's photo is read straight away.
+      if (photoInput.files.length && !form.elements.namedItem('name').value.trim()) {
+        const status = await aiStatus().catch(() => null);
+        if (status && status.state === 'ready') readPhoto(button);
+      }
+    });
+  }
+
+  async function aiStatus() {
+    const response = await fetch('/ai/status', { headers: { Accept: 'application/json' } });
+    return response.json();
+  }
+
+  async function readPhoto(button) {
+    const form = button.form;
+    const status = form.querySelector('[data-ai-status]');
+    const show = (message, kind = '') => {
+      status.hidden = false;
+      status.className = `ai-status ${kind}`;
+      status.textContent = message;
+    };
+    button.disabled = true;
+    try {
+      let state = await aiStatus();
+      if (state.state === 'missing' || state.state === 'failed') {
+        const size = Math.round(state.total / 1e6);
+        const question = 'Reading photos uses a small AI model that runs on this computer. '
+          + `It needs a one-time download of about ${size} MB. Download it now?`;
+        if (!window.confirm(question)) return;
+        state = await (await fetch('/ai/download', { method: 'POST', headers: { Accept: 'application/json' } })).json();
+      }
+      while (state.state === 'downloading') {
+        show(`Downloading the AI model… ${Math.floor((100 * state.done) / state.total)}%`);
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        state = await aiStatus();
+      }
+      if (state.state !== 'ready') throw new Error(state.error || 'the model could not be downloaded');
+
+      show('Reading the photo…');
+      const photoInput = form.querySelector('input[data-photo-input]');
+      await photoInput.photoReady;
+      const body = new FormData();
+      if (photoInput.files.length) body.append('photo', photoInput.files[0]);
+      else body.append('item', button.dataset.readPhoto);
+      const response = await fetch('/ai/read', { method: 'POST', body, headers: { Accept: 'application/json' } });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || `the server answered ${response.status}`);
+
+      const found = result.name || result.quantity || result.notes || (result.tags || []).length || (result.properties || []).length;
+      const filled = fillItemForm(form, result);
+      if (filled.length) {
+        show(`Filled in ${filled.join(', ')}. Please check before saving.`, 'ai-ok');
+      } else if (found) {
+        show('Nothing new to fill in: the form already has what the photo shows.', 'ai-ok');
+      } else {
+        show('No details found. A sharp, close photo of the label works best.', 'ai-warn');
+      }
+      if (result.text && result.text.length) {
+        const details = document.createElement('details');
+        const summary = document.createElement('summary');
+        const text = document.createElement('pre');
+        summary.textContent = 'Text found in the photo';
+        text.textContent = result.text.join('\n');
+        details.append(summary, text);
+        status.append(details);
+      }
+    } catch (error) {
+      show(`Couldn't read the photo: ${error.message}.`, 'ai-error');
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  /** Puts the suggestions into the form without overwriting anything already typed. */
+  function fillItemForm(form, result) {
+    const filled = [];
+    const field = (name) => form.elements.namedItem(name);
+    if (result.name && !field('name').value.trim()) {
+      field('name').value = result.name;
+      filled.push('the name');
+    }
+    if (result.quantity && ['', '1'].includes(field('quantity').value.trim())) {
+      field('quantity').value = result.quantity;
+      filled.push('the quantity');
+    }
+    const tags = field('tags').value.split(',').map((tag) => tag.trim()).filter(Boolean);
+    const newTags = (result.tags || []).filter((tag) => !tags.some((existing) => existing.toLowerCase() === tag.toLowerCase()));
+    if (newTags.length) {
+      field('tags').value = [...tags, ...newTags].join(', ');
+      filled.push(count(newTags.length, 'tag'));
+    }
+    const rows = form.querySelector('[data-property-rows]');
+    const known = new Set([...rows.querySelectorAll('[name="property_name"]')].map((input) => input.value.trim().toLowerCase()));
+    let added = 0;
+    for (const property of result.properties || []) {
+      if (known.has(property.name.toLowerCase())) continue;
+      let row = [...rows.children].find((candidate) => [...candidate.querySelectorAll('input')].every((input) => !input.value));
+      if (!row) {
+        row = rows.lastElementChild.cloneNode(true);
+        rows.append(row);
+      }
+      row.querySelector('[name="property_name"]').value = property.name;
+      row.querySelector('[name="property_value"]').value = property.value;
+      added += 1;
+    }
+    if (added) {
+      filled.push(count(added, 'property', 'properties'));
+      const blank = rows.lastElementChild.cloneNode(true); // keep an empty row for typing more
+      for (const input of blank.querySelectorAll('input')) input.value = '';
+      rows.append(blank);
+    }
+    if (result.notes && !field('notes').value.trim()) {
+      field('notes').value = result.notes;
+      filled.push('notes');
+    }
+    return filled;
+  }
+
+  const count = (n, word, plural = `${word}s`) => `${n} ${n === 1 ? word : plural}`;
 
   // ---------- Small click helpers ----------
 

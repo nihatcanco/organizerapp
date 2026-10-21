@@ -3,6 +3,7 @@ package organizer.web
 import io.ktor.http.CacheControl
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
+import io.ktor.server.application.ApplicationStopped
 import io.ktor.server.application.install
 import io.ktor.server.application.log
 import io.ktor.server.auth.Authentication
@@ -22,6 +23,7 @@ import io.ktor.server.routing.routing
 import kotlinx.html.a
 import kotlinx.html.p
 import organizer.AppConfig
+import organizer.ai.PhotoReader
 import organizer.db.Database
 import organizer.store.ItemRepository
 import organizer.store.LocationRepository
@@ -30,6 +32,7 @@ import java.security.MessageDigest
 class Services(val config: AppConfig, val database: Database) {
     val locations = LocationRepository(database)
     val items = ItemRepository(database)
+    val photoReader: PhotoReader? = if (config.ai) PhotoReader(config.modelsPath.resolve("florence-2-base-ft")) else null
 }
 
 private const val CONTENT_SECURITY_POLICY =
@@ -37,6 +40,7 @@ private const val CONTENT_SECURITY_POLICY =
 
 fun Application.organizer(config: AppConfig, database: Database) {
     val app = Services(config, database)
+    monitor.subscribe(ApplicationStopped) { app.photoReader?.close() }
 
     install(DefaultHeaders) {
         header("Content-Security-Policy", CONTENT_SECURITY_POLICY)
@@ -90,6 +94,7 @@ fun Application.organizer(config: AppConfig, database: Database) {
             searchRoutes(app)
             labelRoutes(app)
             exportRoutes(app)
+            app.photoReader?.let { aiRoutes(it, app) }
         }
         if (password != null) authenticate("password", build = routes) else routes()
     }

@@ -14,7 +14,7 @@ import io.ktor.server.request.receiveMultipart
 import io.ktor.server.request.receiveParameters
 import io.ktor.server.response.header
 import io.ktor.server.response.respond
-import io.ktor.utils.io.readRemaining
+import io.ktor.utils.io.readBuffer
 import kotlinx.io.readByteArray
 import java.io.IOException
 
@@ -48,14 +48,14 @@ suspend fun ApplicationCall.receiveSubmission(): Submission {
                 when (part) {
                     is PartData.FormItem -> fields.getOrPut(part.name.orEmpty()) { mutableListOf() }.add(part.value)
                     is PartData.FileItem -> {
-                        val bytes = part.provider().readRemaining(MAX_UPLOAD_BYTES + 1).readByteArray()
+                        val bytes = part.provider().readBuffer(MAX_UPLOAD_BYTES + 1).readByteArray()
                         if (bytes.size > MAX_UPLOAD_BYTES) throw UploadTooLargeException()
                         if (bytes.isNotEmpty()) files[part.name.orEmpty()] = Upload(part.contentType, bytes)
                     }
                     else -> Unit
                 }
             } finally {
-                part.dispose()
+                part.release()
             }
         }
     } catch (e: IOException) {

@@ -483,6 +483,10 @@ input:focus, select:focus, textarea:focus {
 
 .property-rows { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
 .property-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr) 40px; align-items: center; gap: 8px; }
+@media (max-width: 480px) {
+  .property-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 32px; gap: 6px; }
+  .property-row input { padding-left: 10px; padding-right: 10px; }
+}
 .property-editor > .btn { align-self: flex-start; }
 .suggestions { margin-top: 2px; }
 
@@ -500,6 +504,17 @@ input[type="file"]::file-selector-button {
 .current-photo { display: flex; align-items: center; gap: 14px; margin-bottom: 6px; }
 .thumb-lg, .photo-preview { width: 120px; height: 120px; object-fit: cover; border: 1px solid var(--border); border-radius: var(--radius-sm); }
 .checkbox { display: inline-flex; align-items: center; gap: 8px; font-weight: 500; cursor: pointer; }
+
+.ai-reader { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin-top: 8px; }
+.ai-reader .btn .icon { color: var(--accent); }
+.ai-reader .btn:disabled { opacity: 0.55; cursor: default; }
+.ai-status { width: 100%; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--surface-2); font-size: 0.9rem; }
+.ai-status.ai-ok { background: var(--accent-soft); }
+.ai-status.ai-warn { background: var(--warn-soft); }
+.ai-status.ai-error { background: var(--danger-soft); color: var(--danger); }
+.ai-status details { margin-top: 6px; color: var(--muted); }
+.ai-status summary { cursor: pointer; }
+.ai-status pre { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 0.85rem/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .checkbox input { width: 18px; height: 18px; accent-color: var(--accent); }
 
 /* ---------- Labels ---------- */

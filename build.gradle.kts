@@ -8,6 +8,8 @@ version = "0.1.0"
 
 application {
     mainClass = "organizer.MainKt"
+    // Photos are decoded with Java's image classes; headless keeps them from starting a desktop UI.
+    applicationDefaultJvmArgs = listOf("-Djava.awt.headless=true")
 }
 
 kotlin {
@@ -27,6 +29,8 @@ dependencies {
     implementation("io.ktor:ktor-server-csrf")
     implementation("org.xerial:sqlite-jdbc:3.53.4.0")
     implementation("com.google.zxing:core:3.5.4")
+    implementation("com.microsoft.onnxruntime:onnxruntime:1.30.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
     implementation("ch.qos.logback:logback-classic:1.6.5")
 
     testImplementation("io.ktor:ktor-server-test-host")
@@ -41,4 +45,8 @@ ktor {
 
 tasks.test {
     useJUnitPlatform()
+    systemProperty("java.awt.headless", "true")
+    // The photo-reading test runs only when a downloaded model is available, e.g.
+    // ./gradlew test -Dorganizer.test.models=data/models
+    System.getProperty("organizer.test.models")?.let { systemProperty("organizer.test.models", file(it).absolutePath) }
 }

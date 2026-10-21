@@ -1,0 +1,4 @@
+# Keep line endings that the scripts' platforms expect
+gradlew text eol=lf
+*.bat text eol=crlf
+*.jar binary

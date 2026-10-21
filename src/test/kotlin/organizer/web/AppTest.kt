@@ -16,8 +16,14 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.parameters
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
+import org.junit.jupiter.api.Assumptions.assumeTrue
 import organizer.AppConfig
+import organizer.ai.SAMPLE_LABEL
+import organizer.ai.labelImage
+import organizer.ai.testModelDirectory
+import organizer.ai.toPng
 import organizer.db.Database
+import java.nio.file.Path
 import kotlin.io.path.createTempDirectory
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -34,9 +40,9 @@ class AppTest {
         dir.toFile().deleteRecursively()
     }
 
-    private fun ApplicationTestBuilder.client(config: AppConfig = AppConfig()): HttpClient {
+    private fun ApplicationTestBuilder.client(config: AppConfig = AppConfig(), models: Path = dir.resolve("models")): HttpClient {
         val database = Database.open(dir.resolve("test.db"))
-        application { organizer(config, database) }
+        application { organizer(config.copy(modelsPath = models), database) }
         return createClient { followRedirects = false }
     }
 
@@ -172,6 +178,43 @@ class AppTest {
         val backup = client.get("/export/backup")
         assertEquals(HttpStatusCode.OK, backup.status)
         assertTrue(backup.bodyAsBytes().decodeToString(0, 15) == "SQLite format 3")
+    }
+
+    @Test
+    fun `photo reading waits until its model is downloaded`() = testApplication {
+        val client = client()
+        val status = client.get("/ai/status").bodyAsText()
+        assertContains(status, "\"state\":\"missing\"")
+        assertContains(status, "\"total\":550067409")
+        val read = client.submitFormWithBinaryData("/ai/read", formData { append("item", "1") }) { sameOrigin() }
+        assertEquals(HttpStatusCode.Conflict, read.status)
+        assertContains(client.get("/items/new").bodyAsText(), "Fill in from photo")
+    }
+
+    @Test
+    fun `photo reading can be switched off`() = testApplication {
+        val client = client(AppConfig(ai = false))
+        assertEquals(HttpStatusCode.NotFound, client.get("/ai/status").status)
+        assertFalse("Fill in from photo" in client.get("/items/new").bodyAsText())
+    }
+
+    /** Needs the real model: ./gradlew test -Dorganizer.test.models=path/to/florence-2-base-ft */
+    @Test
+    fun `fills in item details from an uploaded photo`() = testApplication {
+        val models = testModelDirectory()
+        assumeTrue(models != null, "no model directory given")
+        val client = client(models = models!!.parent)
+        val response = client.submitFormWithBinaryData("/ai/read", formData {
+            append("photo", labelImage(*SAMPLE_LABEL).toPng(), Headers.build {
+                append(HttpHeaders.ContentType, "image/png")
+                append(HttpHeaders.ContentDisposition, "filename=\"label.png\"")
+            })
+        }) { sameOrigin() }
+        assertEquals(HttpStatusCode.OK, response.status)
+        val json = response.bodyAsText()
+        assertContains(json, "\"name\":\"Resistor 10 kΩ\"")
+        assertContains(json, "\"quantity\":100")
+        assertContains(json, "{\"name\":\"Package\",\"value\":\"0603\"}")
     }
 
     @Test

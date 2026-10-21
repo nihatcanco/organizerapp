@@ -367,6 +367,23 @@ private suspend fun ApplicationCall.respondItemForm(
                     attributes["hidden"] = ""
                     attributes["data-photo-thumb"] = ""
                 }
+                if (app.photoReader != null) {
+                    // Needs JavaScript, so app.js reveals it.
+                    div("ai-reader") {
+                        attributes["hidden"] = ""
+                        button(type = ButtonType.button, classes = "btn btn-sm") {
+                            attributes["data-read-photo"] = item?.takeIf { it.photoVersion != null }?.id?.toString().orEmpty()
+                            icon("sparkles")
+                            +"Fill in from photo"
+                        }
+                        p("hint") { +"Reads labels and markings with an AI model that runs on this computer." }
+                        div("ai-status") {
+                            attributes["data-ai-status"] = ""
+                            attributes["role"] = "status"
+                            attributes["hidden"] = ""
+                        }
+                    }
+                }
             }
             field("Notes", "notes", errors, hint = "Datasheet links, where you bought it, …") {
                 textArea(rows = "4") {
