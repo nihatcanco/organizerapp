@@ -15,7 +15,7 @@ Kotlin + Ktor on the server, SQLite for storage, server-rendered HTML with a lit
 - **Search** across names, tags, properties and notes. Matches parts of words (`317` finds `LM317T`),
   ignores case and accents, and updates as you type.
 - **QR labels** — print labels for drawers and boxes; scanning one with your phone camera opens that location.
-- **Phone-friendly** — take photos straight from the camera (they're shrunk before uploading).
+- **Take photo** — opens the camera on phones, and the webcam on computers (photos are shrunk before uploading).
 - **Fill in from photo** — a small AI model that runs inside the app reads bag labels and part markings
   and fills in the name, quantity, tags and properties for you to check.
 - **Exports** — CSV for spreadsheets, and a one-click backup of the whole database.
@@ -123,6 +123,17 @@ Everything is optional and set through environment variables, passed to the cont
 | `ORGANIZER_PASSWORD`   | *(none)*             | Ask for this password on every page (any username works).         |
 | `ORGANIZER_PUBLIC_URL` | *(from the request)* | Address printed into QR labels, e.g. `http://organizer.lan:8080`.  |
 | `ORGANIZER_AI`         | `on`                 | `off` hides "Fill in from photo".                                 |
+
+## Taking photos
+
+On the item form, **Take photo** opens the camera:
+
+- On phones and tablets it opens the camera app, and the photo goes straight into the form.
+- On a computer with a webcam it shows the camera on the page. Press **Take photo** (or Enter) to use
+  the picture, or **Switch camera** if there's more than one. Browsers only let pages use a webcam on
+  `localhost` or over HTTPS, so the button appears when you open the app on the computer it runs on
+  (`http://localhost:8080`) or through an HTTPS reverse proxy (see [Security](#security)), but not
+  at an address like `http://192.168.1.20:8080`. Choosing a photo file works everywhere.
 
 ## Filling in items from photos
 

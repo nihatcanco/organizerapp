@@ -25,6 +25,7 @@ import kotlinx.html.button
 import kotlinx.html.checkBoxInput
 import kotlinx.html.dataList
 import kotlinx.html.dd
+import kotlinx.html.dialog
 import kotlinx.html.div
 import kotlinx.html.dl
 import kotlinx.html.dt
@@ -48,6 +49,7 @@ import kotlinx.html.textArea
 import kotlinx.html.textInput
 import kotlinx.html.th
 import kotlinx.html.tr
+import kotlinx.html.video
 import organizer.model.Item
 import organizer.model.ItemDraft
 import organizer.model.ItemQuery
@@ -356,11 +358,29 @@ private suspend fun ApplicationCall.respondItemForm(
                     attributes["data-photo-preview"] = ""
                     attributes["hidden"] = ""
                 }
-                fileInput(name = "photo") {
-                    id = "photo"
-                    accept = "image/*"
-                    attributes["data-photo-input"] = ""
+                div("photo-picker") {
+                    // Needs JavaScript and a camera, so app.js reveals it.
+                    button(type = ButtonType.button, classes = "btn") {
+                        attributes["data-take-photo"] = ""
+                        attributes["hidden"] = ""
+                        icon("camera")
+                        +"Take photo"
+                    }
+                    fileInput(name = "photo") {
+                        id = "photo"
+                        accept = "image/*"
+                        attributes["data-photo-input"] = ""
+                    }
                 }
+                // Phones and tablets open their camera app for this one; app.js moves the photo into the input above.
+                fileInput {
+                    accept = "image/*"
+                    attributes["capture"] = "environment"
+                    attributes["tabindex"] = "-1"
+                    attributes["hidden"] = ""
+                    attributes["data-photo-capture"] = ""
+                }
+                cameraDialog()
                 fileInput(name = "photo_thumb") {
                     accept = "image/jpeg"
                     attributes["tabindex"] = "-1"
@@ -401,6 +421,40 @@ private suspend fun ApplicationCall.respondItemForm(
                     }
                 }
                 a(cancel, classes = "btn btn-ghost") { +"Cancel" }
+            }
+        }
+    }
+}
+
+/** The live camera view that app.js opens on computers with a webcam. */
+private fun FlowContent.cameraDialog() {
+    dialog("camera") {
+        attributes["data-camera"] = ""
+        attributes["aria-label"] = "Take photo"
+        video("camera-view") {
+            attributes["muted"] = ""
+            attributes["playsinline"] = ""
+        }
+        p("camera-status") {
+            attributes["data-camera-status"] = ""
+            attributes["role"] = "status"
+            attributes["hidden"] = ""
+        }
+        div("camera-actions") {
+            button(type = ButtonType.button, classes = "btn btn-ghost") {
+                attributes["data-camera-close"] = ""
+                +"Cancel"
+            }
+            button(type = ButtonType.button, classes = "btn") {
+                attributes["data-camera-switch"] = ""
+                attributes["hidden"] = ""
+                +"Switch camera"
+            }
+            button(type = ButtonType.button, classes = "btn btn-primary") {
+                attributes["data-camera-shoot"] = ""
+                disabled = true
+                icon("camera")
+                +"Take photo"
             }
         }
     }

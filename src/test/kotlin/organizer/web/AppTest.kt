@@ -30,6 +30,7 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class AppTest {
@@ -178,6 +179,17 @@ class AppTest {
         val backup = client.get("/export/backup")
         assertEquals(HttpStatusCode.OK, backup.status)
         assertTrue(backup.bodyAsBytes().decodeToString(0, 15) == "SQLite format 3")
+    }
+
+    @Test
+    fun `the item form can take a photo with the camera`() = testApplication {
+        val form = client().get("/items/new").bodyAsText()
+        assertContains(form, "data-take-photo")
+        assertContains(form, "<dialog class=\"camera\"")
+        val captureInput = Regex("""<input[^>]*capture="environment"[^>]*>""").find(form)?.value
+        assertNotNull(captureInput)
+        // Without a name it isn't uploaded; app.js moves its photo into the "photo" input.
+        assertFalse("name=" in captureInput)
     }
 
     @Test
