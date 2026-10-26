@@ -88,10 +88,10 @@ volume `organizer-data`, and logs are shown by `docker logs organizer`. To go ba
   can reach the app. The deploy doesn't change the firewall; add the rule yourself, preferably for
   private and domain networks only.
 
-**Job parameters** (they appear after the first build): `DEPLOY` (turn it off to only build and
-test), `PUBLIC_URL`, `AI` and `PASSWORD_CREDENTIALS_ID`. For a password, add a *Secret text*
-credential in Jenkins (*Manage Jenkins › Credentials*) and put its ID in `PASSWORD_CREDENTIALS_ID`.
-In a multibranch job, only `main` is deployed.
+**Settings** are in the `environment` block of the `Jenkinsfile`: `PUBLIC_URL`, `AI` and
+`PASSWORD_CREDENTIALS_ID`. For a password, add a *Secret text* credential in Jenkins (*Manage
+Jenkins › Credentials*) and put its ID in `PASSWORD_CREDENTIALS_ID`. Every build of `main` is
+deployed; in a multibranch job, other branches are only built and tested.
 
 ### Running Jenkins on your own Windows PC
 
@@ -110,13 +110,13 @@ In a multibranch job, only `main` is deployed.
    `-Dhudson.plugins.git.GitSCM.ALLOW_LOCAL_CHECKOUT=true` to the `<arguments>` in
    `C:\Program Files\Jenkins\jenkins.xml`, restart the Jenkins service, and use the folder path,
    such as `C:\src\organizerapp`, as the URL.
-6. Click **Build Now**. When it finishes, Organizer is at `http://localhost:18420`. Later builds
-   show **Build with Parameters**.
+6. Click **Build Now**. When it finishes, Organizer is at `http://localhost:18420`. After that,
+   Jenkins checks the repository every 3 minutes and builds each new commit.
 
 ## Configuration
 
 Everything is optional and set through environment variables, passed to the container with `-e`
-(the Jenkins job has a parameter for each):
+(the `Jenkinsfile` has a setting for each):
 
 | Variable               | Default              | Meaning                                                           |
 |------------------------|----------------------|-------------------------------------------------------------------|

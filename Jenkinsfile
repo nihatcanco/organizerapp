@@ -16,16 +16,14 @@ pipeline {
         pollSCM('H/3 * * * *')
     }
 
-    parameters {
-        booleanParam(name: 'DEPLOY', defaultValue: true, description: 'Install the build on this agent after the tests pass.')
-        string(name: 'PUBLIC_URL', defaultValue: '', description: 'Optional address for QR labels, e.g. http://organizer.lan:18420.')
-        choice(name: 'AI', choices: ['on', 'off'], description: '"off" hides Fill in from photo.')
-        string(name: 'PASSWORD_CREDENTIALS_ID', defaultValue: '', description: 'Optional: ID of a "Secret text" credential holding the app password.')
-    }
-
     environment {
         // Not 8080, which other apps on the same machine often use.
         APP_PORT = '18420'
+        // App settings; see "Configuration" in README.md.
+        PUBLIC_URL = ''  // e.g. http://organizer.lan:18420, for QR labels
+        AI = 'on'        // 'off' hides Fill in from photo
+        // ID of a "Secret text" credential holding the app password; empty for no password.
+        PASSWORD_CREDENTIALS_ID = ''
     }
 
     stages {
@@ -44,7 +42,7 @@ pipeline {
         stage('Deploy') {
             when {
                 // In a multibranch job only main is deployed; other branches are just built and tested.
-                expression { params.DEPLOY && (env.BRANCH_NAME == null || env.BRANCH_NAME == 'main') }
+                expression { env.BRANCH_NAME == null || env.BRANCH_NAME == 'main' }
             }
             steps {
                 script {
@@ -57,7 +55,7 @@ pipeline {
 
                     // Settings reach the container as environment variables (--env with a name only), so no
                     // value, the password included, is pasted into a command line.
-                    def settings = ["ORGANIZER_PUBLIC_URL=${params.PUBLIC_URL}", "ORGANIZER_AI=${params.AI}"]
+                    def settings = ["ORGANIZER_PUBLIC_URL=${env.PUBLIC_URL}", "ORGANIZER_AI=${env.AI}"]
                     def start = {
                         withEnv(settings) {
                             bat 'docker run --detach --name organizer --restart unless-stopped ' +
@@ -65,8 +63,8 @@ pipeline {
                                 '--env ORGANIZER_PUBLIC_URL --env ORGANIZER_AI --env ORGANIZER_PASSWORD organizer'
                         }
                     }
-                    if (params.PASSWORD_CREDENTIALS_ID?.trim()) {
-                        withCredentials([string(credentialsId: params.PASSWORD_CREDENTIALS_ID.trim(), variable: 'ORGANIZER_PASSWORD')]) {
+                    if (env.PASSWORD_CREDENTIALS_ID?.trim()) {
+                        withCredentials([string(credentialsId: env.PASSWORD_CREDENTIALS_ID.trim(), variable: 'ORGANIZER_PASSWORD')]) {
                             start()
                         }
                     } else {
