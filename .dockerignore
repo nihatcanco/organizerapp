@@ -1,0 +1,5 @@
+# The image only needs the built jar and the backup script. Keeping everything else out matters:
+# data/ holds your database and the 550 MB AI model.
+*
+!build/libs/organizer.jar
+!docker/backup.sh
