@@ -10,6 +10,12 @@ pipeline {
         timeout(time: 30, unit: 'MINUTES')
     }
 
+    triggers {
+        // Checks GitHub every 3 minutes. H picks a fixed offset per job, so jobs with the same schedule
+        // don't all poll at the same moment.
+        pollSCM('H/3 * * * *')
+    }
+
     parameters {
         booleanParam(name: 'DEPLOY', defaultValue: true, description: 'Install the build on this agent after the tests pass.')
         string(name: 'PUBLIC_URL', defaultValue: '', description: 'Optional address for QR labels, e.g. http://organizer.lan:8080.')
