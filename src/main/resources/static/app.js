@@ -161,8 +161,8 @@
   }
 
   function toJpeg(image, maxSize, quality) {
-    const width = image.naturalWidth || image.width;
-    const height = image.naturalHeight || image.height;
+    const width = image.videoWidth || image.naturalWidth || image.width;
+    const height = image.videoHeight || image.naturalHeight || image.height;
     const scale = Math.min(1, maxSize / Math.max(width, height));
     const canvas = document.createElement('canvas');
     canvas.width = Math.max(1, Math.round(width * scale));
@@ -180,6 +180,144 @@
     const transfer = new DataTransfer();
     transfer.items.add(file);
     input.files = transfer.files;
+  }
+
+  // ---------- Take photo: the camera app on phones, a live camera view on computers ----------
+
+  for (const button of document.querySelectorAll('[data-take-photo]')) {
+    const photoInput = button.form.querySelector('input[data-photo-input]');
+    if (matchMedia('(pointer: coarse)').matches) {
+      // A phone's own camera app takes better photos than a page can, and also works over plain http://.
+      const captureInput = button.form.querySelector('input[data-photo-capture]');
+      button.hidden = false;
+      button.addEventListener('click', () => captureInput.click());
+      captureInput.addEventListener('change', () => {
+        if (captureInput.files.length) usePhoto(photoInput, captureInput.files[0]);
+        captureInput.value = '';
+      });
+    } else {
+      const dialog = button.form.querySelector('dialog[data-camera]');
+      hasCamera().then((found) => {
+        if (!found || !dialog.showModal) return;
+        button.hidden = false;
+        button.addEventListener('click', liveCamera(dialog, photoInput));
+      });
+    }
+  }
+
+  /** Browsers only offer the camera to pages on https:// or localhost. */
+  async function hasCamera() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return false;
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      return devices.some((device) => device.kind === 'videoinput');
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /** Hands the photo to the photo input, as if it had been chosen there. */
+  function usePhoto(photoInput, file) {
+    setFile(photoInput, file);
+    photoInput.dispatchEvent(new Event('change'));
+  }
+
+  /** Sets up the camera dialog and returns the function that opens it. */
+  function liveCamera(dialog, photoInput) {
+    const video = dialog.querySelector('video');
+    const status = dialog.querySelector('[data-camera-status]');
+    const shoot = dialog.querySelector('[data-camera-shoot]');
+    const switcher = dialog.querySelector('[data-camera-switch]');
+    let stream = null;
+    let cameras = [];
+    let cameraId; // the camera last switched to, used again next time
+    let attempt = 0; // a newer start, or closing, makes a slower getUserMedia answer stale
+
+    const show = (message) => {
+      status.hidden = !message;
+      status.textContent = message;
+    };
+    const stop = () => {
+      if (stream) for (const track of stream.getTracks()) track.stop();
+      stream = null;
+      video.srcObject = null;
+      shoot.disabled = true;
+    };
+
+    async function start() {
+      const current = ++attempt;
+      stop();
+      switcher.disabled = true;
+      show('Starting the camera…');
+      try {
+        const choice = cameraId ? { deviceId: { exact: cameraId } } : { facingMode: 'environment' };
+        const next = await navigator.mediaDevices.getUserMedia({ video: { ...choice, width: { ideal: 1920 }, height: { ideal: 1080 } } });
+        if (current !== attempt) {
+          for (const track of next.getTracks()) track.stop();
+          return;
+        }
+        stream = next;
+        video.srcObject = stream;
+        await video.play();
+        if (current !== attempt) return;
+        show('');
+        shoot.disabled = false;
+        shoot.focus();
+        // Until the browser may use the camera, it lists at most one.
+        cameras = (await navigator.mediaDevices.enumerateDevices()).filter((device) => device.kind === 'videoinput');
+        switcher.hidden = cameras.length < 2;
+        switcher.disabled = false;
+      } catch (error) {
+        if (current !== attempt) return;
+        if (cameraId && error.name === 'OverconstrainedError') {
+          cameraId = undefined; // unplugged since, so take any camera
+          start();
+        } else {
+          show(cameraError(error));
+        }
+      }
+    }
+
+    switcher.addEventListener('click', () => {
+      const currentId = stream && stream.getVideoTracks()[0].getSettings().deviceId;
+      const index = cameras.findIndex((camera) => camera.deviceId === currentId);
+      cameraId = cameras[(index + 1) % cameras.length].deviceId;
+      start();
+    });
+    shoot.addEventListener('click', async () => {
+      shoot.disabled = true;
+      try {
+        const photo = await toJpeg(video, Infinity, 0.92);
+        dialog.close();
+        usePhoto(photoInput, new File([photo], 'camera.jpg', { type: 'image/jpeg' }));
+      } catch (error) {
+        show(`Couldn't take the photo: ${error.message}.`);
+        shoot.disabled = false;
+      }
+    });
+    dialog.querySelector('[data-camera-close]').addEventListener('click', () => dialog.close());
+    dialog.addEventListener('close', () => {
+      attempt += 1;
+      stop();
+    });
+
+    return () => {
+      dialog.showModal();
+      start();
+    };
+  }
+
+  function cameraError(error) {
+    switch (error.name) {
+      case 'NotAllowedError':
+        return `The browser isn't allowed to use the camera. Allow it in the site settings, or choose a photo instead.`;
+      case 'NotFoundError':
+        return 'No camera found.';
+      case 'NotReadableError':
+        return `The camera is in use by another app, or couldn't be started.`;
+      default:
+        return `Couldn't start the camera: ${error.message}.`;
+    }
   }
 
   // ---------- Fill in item details from a photo, read by the AI model on the server ----------
