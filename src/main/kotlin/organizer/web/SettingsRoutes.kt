@@ -84,14 +84,15 @@ private suspend fun ApplicationCall.respondSettings(app: Services, errors: Map<S
             }
             p {
                 +"Organizer can fill in an item's tags, properties and notes from its photo, its name, or both, and find a photo "
-                +"for an item added by name. Claude searches the web for what the photo or name doesn't say. It needs an API key from "
+                +"of it on the web by its name. It needs an API key from "
                 a("https://console.anthropic.com/settings/keys") { +"console.anthropic.com" }
-                +". Anthropic charges that account about $0.0003 a photo and $0.0001 a name, plus 1¢ for each web search."
+                +". Anthropic charges that account about $0.0003 a photo and $0.0002 a name. Find photo searches the web, "
+                +"about 1¢ a search, so 1 to 3¢ each time."
             }
             dl("properties ai-facts") {
                 dt { +"Model" }
                 dd {
-                    +"${AnthropicClaude.MODEL_NAME} with web search "
+                    +"${AnthropicClaude.MODEL_NAME} "
                     code { +AnthropicClaude.MODEL }
                 }
                 dt { +"Spent" }
@@ -147,8 +148,8 @@ private suspend fun ApplicationCall.respondSettings(app: Services, errors: Map<S
                 p("hint") {
                     strong { +"Privacy: " }
                     +"the photo and name of an item you fill in with AI are sent to Anthropic. That happens when you press "
-                    +"Fill in with AI, or choose a photo for a new item that has no name yet. A photo found for an item is "
-                    +"downloaded by Organizer from the page Claude found."
+                    +"Fill in with AI or Find photo, or choose a photo for a new item that has no name yet. A photo Find photo "
+                    +"finds is downloaded by Organizer from the page Claude found."
                 }
                 if (app.config.password == null) {
                     p("hint") {

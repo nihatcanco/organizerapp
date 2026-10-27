@@ -245,6 +245,9 @@ class AppTest {
         assertContains(form, "href=\"/settings\"")
         val fill = client.submitFormWithBinaryData("/ai/fill", formData { append("name", "NE555P") }) { sameOrigin() }
         assertEquals(HttpStatusCode.Conflict, fill.status)
+        assertFalse("data-find-photo" in form)
+        val find = client.submitFormWithBinaryData("/ai/photo", formData { append("name", "NE555P") }) { sameOrigin() }
+        assertEquals(HttpStatusCode.Conflict, find.status)
         assertTrue(asked.isEmpty())
     }
 
@@ -309,44 +312,48 @@ class AppTest {
     }
 
     @Test
-    fun `finds a photo for an item added by name`() = testApplication {
+    fun `Find photo looks the name up on the web, filling in doesn't`() = testApplication {
         val client = client()
         client.saveApiKey("sk-ant-good-0123456789abcdefghij")
-        answer = """{"name": "NE555P", "photos": ["https://www.ti.com/product/NE555", "https://www.mouser.com/ProductDetail/NE555P"]}"""
+        client.submitFormWithBinaryData("/ai/fill", formData { append("name", "NE555P") }) { sameOrigin() }
+        assertFalse(asked.last().webSearch)
+        assertTrue(photos.searched.isEmpty())
 
-        val fill = client.submitFormWithBinaryData("/ai/fill", formData { append("name", "NE555P") }) { sameOrigin() }
-        val photo = Json.parseToJsonElement(fill.bodyAsText()).jsonObject["photo"]!!.jsonObject
+        answer = """{"photos": ["https://www.ti.com/product/NE555", "https://www.mouser.com/ProductDetail/NE555P"]}"""
+        val found = client.submitFormWithBinaryData("/ai/photo", formData { append("name", "NE555P") }) { sameOrigin() }
+        assertTrue(asked.last().webSearch)
+        assertContains(asked.last().text, "Find web pages with a photo of \"NE555P\"")
+        val photo = Json.parseToJsonElement(found.bodyAsText()).jsonObject["photo"]!!.jsonObject
         assertEquals("image/png", photo["type"]!!.jsonPrimitive.content)
         assertContentEquals(webPhoto.bytes, Base64.getDecoder().decode(photo["data"]!!.jsonPrimitive.content))
         assertEquals("https://www.ti.com/product/NE555", photo["source"]!!.jsonPrimitive.content)
         assertEquals(listOf(listOf("https://www.ti.com/product/NE555", "https://www.mouser.com/ProductDetail/NE555P")), photos.searched)
 
-        // An item with a photo keeps it, so none is looked for.
-        val withPhoto = client.submitFormWithBinaryData("/ai/fill", formData {
-            append("name", "NE555P")
-            append("photo", labelImage(*SAMPLE_LABEL).toPng(), Headers.build {
-                append(HttpHeaders.ContentType, "image/png")
-                append(HttpHeaders.ContentDisposition, "filename=\"label.png\"")
-            })
-        }) { sameOrigin() }
-        assertFalse("\"photo\"" in withPhoto.bodyAsText())
-        assertFalse("photoNote" in withPhoto.bodyAsText())
-        assertEquals(1, photos.searched.size)
-
-        // Without a photo, the form says why.
+        // Without a photo, the status line says why.
         photos.photo = null
-        val blocked = client.submitFormWithBinaryData("/ai/fill", formData { append("name", "NE555P") }) { sameOrigin() }
-        assertContains(blocked.bodyAsText(), "\"photoNote\":\"Couldn't download a photo from ti.com, mouser.com; Settings › Logs says why.\"")
-        answer = """{"name": "NE555P", "photos": []}"""
-        val nowhere = client.submitFormWithBinaryData("/ai/fill", formData { append("name", "NE555P") }) { sameOrigin() }
-        assertContains(nowhere.bodyAsText(), "\"photoNote\":\"Claude found no page with a photo of this exact item.\"")
-        assertEquals(2, photos.searched.size)
+        val blocked = client.submitFormWithBinaryData("/ai/photo", formData { append("name", "NE555P") }) { sameOrigin() }
+        assertContains(blocked.bodyAsText(), "\"note\":\"Couldn't download a photo from ti.com, mouser.com; Settings › Logs says why.\"")
+        photos.error = IllegalStateException("broken page")
+        val failed = client.submitFormWithBinaryData("/ai/photo", formData { append("name", "NE555P") }) { sameOrigin() }
+        assertEquals(HttpStatusCode.OK, failed.status)
+        assertContains(failed.bodyAsText(), "Couldn't download a photo from ti.com")
+        photos.error = null
+        answer = """{"photos": []}"""
+        val nowhere = client.submitFormWithBinaryData("/ai/photo", formData { append("name", "NE555P") }) { sameOrigin() }
+        assertContains(nowhere.bodyAsText(), "\"note\":\"Claude found no page with a photo of this exact item.\"")
+        assertEquals(3, photos.searched.size)
+        val noName = client.submitFormWithBinaryData("/ai/photo", formData { append("name", " ") }) { sameOrigin() }
+        assertEquals(HttpStatusCode.BadRequest, noName.status)
 
         // The Logs page shows where the photo was looked for.
         val logs = client.get("/settings/logs").bodyAsText()
         assertContains(logs, "Looking for a photo of NE555P at https://www.ti.com/product/NE555, https://www.mouser.com/ProductDetail/NE555P")
         assertContains(logs, "Claude named no pages with a photo of NE555P")
-        assertFalse("Looking for a photo" in client.get("/settings/logs?show=problems").bodyAsText())
+        val problems = client.get("/settings/logs?show=problems").bodyAsText()
+        assertFalse("Looking for a photo of NE555P at" in problems)
+        assertContains(problems, "Looking for a photo of NE555P failed")
+
+        assertContains(client.get("/items/new").bodyAsText(), "data-find-photo")
     }
 
     @Test
@@ -354,7 +361,7 @@ class AppTest {
         val client = client()
         client.saveApiKey("sk-ant-good-0123456789abcdefghij")
         val before = client.get("/settings").bodyAsText()
-        assertContains(before, "Claude Haiku 5.5 with web search")
+        assertContains(before, "Claude Haiku 5.5 <code>claude-haiku-5-5</code>")
         assertContains(before, "<code>claude-haiku-5-5</code>")
         assertContains(before, "Nothing yet")
         assertFalse("web_search" in before)

@@ -92,22 +92,27 @@ class ItemSuggestionTest {
         assertContains(photo, "This photo shows something to add")
         assertContains(photo, "- name: short, as written on a box.")
         assertContains(photo, "Copy values exactly as printed.")
-        assertContains(photo, "You can search the web to identify the exact item and to check facts that aren't printed on it")
-        assertFalse("photos" in photo)
 
         val name = itemQuestion(name = "NE555P", photo = false)
         assertContains(name, "Someone is adding \"NE555P\" to a home inventory")
         assertContains(name, "- name: as given.")
         assertContains(name, "never guess a value you aren't sure of")
-        assertContains(name, "to check facts that the name doesn't say and to find pages with a photo of it")
-        assertContains(name, "\"photos\": []")
-        assertContains(name, "- photos: a list of up to five addresses, copied exactly from your search results")
-        assertContains(name, "If your searches found no such page, search for one.")
+        assertFalse("photo" in name.lowercase())
 
         val both = itemQuestion(name = "Resistor 10k", photo = true)
         assertContains(both, "This photo shows \"Resistor 10k\", something to add")
         assertContains(both, "reading any label")
-        assertFalse("photos" in both)
+        // Filling in never searches the web; only Find photo does.
+        for (question in listOf(photo, name, both)) assertFalse("search" in question)
+    }
+
+    @Test
+    fun `asks for pages with a photo of the item`() {
+        val question = photoQuestion("Yamaha AES420")
+        assertContains(question, "Find web pages with a photo of \"Yamaha AES420\"")
+        assertContains(question, "{\"photos\": []}")
+        assertContains(question, "- photos: a list of up to five addresses, copied exactly from your search results")
+        assertContains(photoQuestion("12\" ruler"), "photo of \"12\\\" ruler\",")
     }
 
     @Test
@@ -117,20 +122,19 @@ class ItemSuggestionTest {
 
     @Test
     fun `reads the photo pages, keeping only web addresses`() {
-        val suggestion = suggestItem(
-            """{"name": "NE555P", "photos": ["https://www.ti.com/product/NE555", "file:///etc/passwd", "javascript:alert(1)", "https://www.ti.com/product/NE555", "http://a.example/1.jpg", "https://b.example/", "https://c.example/", "https://d.example/", "https://e.example/"]}""",
-        )
         assertEquals(
             listOf("https://www.ti.com/product/NE555", "http://a.example/1.jpg", "https://b.example/", "https://c.example/", "https://d.example/"),
-            suggestion.photoPages,
+            photoPages(
+                """Here: {"photos": ["https://www.ti.com/product/NE555", "file:///etc/passwd", "javascript:alert(1)", "https://www.ti.com/product/NE555", "http://a.example/1.jpg", "https://b.example/", "https://c.example/", "https://d.example/", "https://e.example/"]}""",
+            ),
         )
-        assertEquals(emptyList(), suggestItem("""{"name": "NE555P", "photos": null}""").photoPages)
+        assertEquals(emptyList(), photoPages("""{"photos": null}"""))
+        assertEquals(emptyList(), photoPages("I couldn't find any."))
         assertEquals(
             listOf("https://reverb.com/item/123-yamaha-aes420", "https://www.thomann.de/aes420.htm", "https://usa.yamaha.com/aes/"),
-            suggestItem(
+            photoPages(
                 """{"photos": [{"url": "https://reverb.com/item/123-yamaha-aes420", "site": "Reverb"}, "www.thomann.de/aes420.htm", {"address": "usa.yamaha.com/aes/"}, "Yamaha's site", {"site": "eBay"}]}""",
-            ).photoPages,
+            ),
         )
-        assertEquals(emptyList(), suggestItem("""{"properties": {"photos": "https://a.example/"}}""").properties)
     }
 }

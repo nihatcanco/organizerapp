@@ -156,11 +156,13 @@ empty fields, highlights what it filled in, and never saves anything by itself, 
 suggestions before saving. Choosing a photo for a new item that has no name yet fills the form in
 straight away.
 
-Claude searches the web for what the photo or name doesn't say, such as a part's specifications.
-For an item without a photo, it also names up to five pages from different sites that show it,
-such as the maker's product page, shops and marketplaces. Organizer downloads those pages' product
-photos and puts one in the photo field, preferring a photo on a white or transparent background.
-The status line says which site it's from, or which sites didn't give one. Organizer only downloads
+Filling in doesn't search the web: Claude answers from the photo, the name and what it knows.
+
+**Find photo**, next to Choose photo, looks up a photo of the item by its typed name. Claude searches
+the web and names up to five pages from different sites that show the item, such as the maker's
+product page, shops and marketplaces. Organizer downloads those pages' product photos and puts one
+in the photo field, preferring a photo on a white or transparent background. The status line says
+which site it's from, or which sites didn't give one. Organizer only downloads
 from addresses on the public internet, never from this computer or the local network, and
 identifies itself honestly, so sites that block automated downloads (many large shops and makers'
 sites answer 403) don't give a photo. **Settings › Logs** shows the pages Claude named and why each
@@ -173,9 +175,9 @@ To set it up:
 2. Open **Settings** (in the top bar), paste the key and save. The app checks it with
    Anthropic first.
 
-What it costs: Anthropic bills the account per use, about $0.0003 a photo and $0.0001 a typed name,
-plus 1¢ for each web search. Claude searches only when it needs to, but a typed name usually means
-one search, to find a photo. An answer takes about 2 seconds, or a few more with a search.
+What it costs: Anthropic bills the account per use. Filling in costs about $0.0003 from a photo and
+$0.0002 from a typed name (100 photos cost about 3¢), and takes about 2 seconds. **Find photo**
+searches the web, at 1¢ a search, so it costs 1 to 3¢ each time and takes 5 to 10 seconds.
 **Settings** names the model and shows what AI has cost this month and in total, worked out from
 Anthropic's list prices for every question asked. The bill itself is in the Anthropic Console.
 

@@ -273,7 +273,7 @@ private suspend fun ApplicationCall.respondItemForm(
                 }
             }
             // The photo comes first: with AI, a photo is often all that's needed to fill in the rest.
-            photoField(item, form, errors)
+            photoField(item, form, errors, ai)
             field("Name", "name", errors) {
                 textInput(name = "name") {
                     id = "name"
@@ -376,10 +376,10 @@ private suspend fun ApplicationCall.respondItemForm(
 }
 
 /**
- * The photo, with buttons to take or choose another. The file input itself works without JavaScript;
- * app.js hides it behind the Choose photo button and shows what was picked in the tile.
+ * The photo, with buttons to take or choose another, or with [ai], to find one on the web. The file input itself
+ * works without JavaScript; app.js hides it behind the Choose photo button and shows what was picked in the tile.
  */
-private fun FlowContent.photoField(item: Item?, form: ItemForm, errors: Map<String, String>) {
+private fun FlowContent.photoField(item: Item?, form: ItemForm, errors: Map<String, String>, ai: Boolean) {
     field("Photo", "photo", errors) {
         div("photo-field") {
             // A larger place to click; the buttons next to it are what screen readers and keyboards use.
@@ -416,12 +416,28 @@ private fun FlowContent.photoField(item: Item?, form: ItemForm, errors: Map<Stri
                     icon("image")
                     +"Choose photo"
                 }
+                if (ai) {
+                    // Looks the typed name up on the web, so app.js reveals it and enables it once there is a name.
+                    button(type = ButtonType.button, classes = "btn") {
+                        attributes["data-find-photo"] = ""
+                        attributes["hidden"] = ""
+                        icon("sparkles")
+                        +"Find photo"
+                    }
+                }
                 if (item?.photoVersion != null) {
                     label("checkbox") {
                         checkBoxInput(name = "remove_photo") { checked = form.removePhoto }
                         +"Remove photo"
                     }
                 }
+            }
+        }
+        if (ai) {
+            div("ai-status") {
+                attributes["data-photo-status"] = ""
+                attributes["role"] = "status"
+                attributes["hidden"] = ""
             }
         }
         // Phones and tablets open their camera app for this one; app.js moves the photo into the input above.

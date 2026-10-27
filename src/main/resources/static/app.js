@@ -356,14 +356,16 @@
     return remove && remove.checked ? '' : button.dataset.aiFill;
   }
 
+  /** Shows [message] in an AI status line; [kind] is ai-busy, ai-ok, ai-warn or ai-error. */
+  function showStatus(status, message, kind = '') {
+    status.hidden = false;
+    status.className = `ai-status ${kind}`;
+    status.textContent = message;
+  }
+
   async function fillWithAi(button) {
     const form = button.form;
-    const status = form.querySelector('[data-ai-status]');
-    const show = (message, kind = '') => {
-      status.hidden = false;
-      status.className = `ai-status ${kind}`;
-      status.textContent = message;
-    };
+    const show = (message, kind) => showStatus(form.querySelector('[data-ai-status]'), message, kind);
     button.disabled = true;
     try {
       const photoInput = form.querySelector('input[data-photo-input]');
@@ -379,14 +381,12 @@
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error || `the server answered ${response.status}`);
 
-      const found = result.name || result.quantity || result.notes || result.photo || (result.tags || []).length || (result.properties || []).length;
-      const noPhoto = !photoInput.files.length && !savedPhoto(button);
-      const filled = fillItemForm(form, result, noPhoto);
-      const photoNote = noPhoto && result.photoNote ? ` ${result.photoNote}` : '';
+      const found = result.name || result.quantity || result.notes || (result.tags || []).length || (result.properties || []).length;
+      const filled = fillItemForm(form, result);
       if (filled.length) {
-        show(`Filled in ${filled.join(', ')}. Please check before saving.${photoNote}`, 'ai-ok');
+        show(`Filled in ${filled.join(', ')}. Please check before saving.`, 'ai-ok');
       } else if (found) {
-        show(`Nothing new to fill in: the form already has what Claude found.${photoNote}`, 'ai-ok');
+        show('Nothing new to fill in: the form already has what Claude found.', 'ai-ok');
       } else {
         show(`No details found. ${hasPhoto ? 'A sharp, close photo works best.' : 'A more specific name may help.'}`, 'ai-warn');
       }
@@ -397,20 +397,54 @@
     }
   }
 
-  /**
-   * Puts the suggestions into the form without overwriting anything already typed, and highlights what changed.
-   * A photo Claude found goes in only when the item has none ([noPhoto]).
-   */
-  function fillItemForm(form, result, noPhoto) {
-    const filled = [];
-    const field = (name) => form.elements.namedItem(name);
-    if (result.photo && noPhoto) {
+  // ---------- Find photo: one from the web, for the typed name ----------
+
+  for (const button of document.querySelectorAll('[data-find-photo]')) {
+    const nameInput = button.form.elements.namedItem('name');
+    const update = () => {
+      button.disabled = !nameInput.value.trim();
+    };
+    button.hidden = false;
+    update();
+    nameInput.addEventListener('input', update);
+    button.addEventListener('click', async () => {
+      await findPhoto(button);
+      update();
+    });
+  }
+
+  async function findPhoto(button) {
+    const form = button.form;
+    const show = (message, kind) => showStatus(form.querySelector('[data-photo-status]'), message, kind);
+    const name = form.elements.namedItem('name').value.trim();
+    button.disabled = true;
+    try {
+      show(`Looking on the web for a photo of ${name}…`, 'ai-busy');
+      const body = new FormData();
+      body.append('name', name);
+      const response = await fetch('/ai/photo', { method: 'POST', body, headers: { Accept: 'application/json' } });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || `the server answered ${response.status}`);
+      if (!result.photo) {
+        show(result.note, 'ai-warn');
+        return;
+      }
       const photoInput = form.querySelector('input[data-photo-input]');
       const bytes = Uint8Array.from(atob(result.photo.data), (char) => char.charCodeAt(0));
       photoInput.fromAi = true;
       usePhoto(photoInput, new File([bytes], 'photo', { type: result.photo.type }));
-      filled.push(`a photo from ${new URL(result.photo.source).hostname.replace(/^www\./, '')}`);
+      const remove = form.elements.namedItem('remove_photo');
+      if (remove) remove.checked = false;
+      show(`Found a photo on ${new URL(result.photo.source).hostname.replace(/^www\./, '')}. Please check it's the right item before saving.`, 'ai-ok');
+    } catch (error) {
+      show(`Couldn't find a photo: ${error.message.replace(/\.$/, '')}.`, 'ai-error');
     }
+  }
+
+  /** Puts the suggestions into the form without overwriting anything already typed, and highlights what changed. */
+  function fillItemForm(form, result) {
+    const filled = [];
+    const field = (name) => form.elements.namedItem(name);
     if (result.name && !field('name').value.trim()) {
       setFilled(field('name'), result.name);
       filled.push('the name');

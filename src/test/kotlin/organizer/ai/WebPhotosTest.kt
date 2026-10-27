@@ -27,7 +27,11 @@ class WebPhotosTest {
         createContext("/") { exchange ->
             requests++
             val page = pages[exchange.requestURI.path]
-            if (page == null) {
+            // Like image servers that stop hotlinking: images under /cdn/ only for the shop's own pages.
+            val hotlinked = exchange.requestURI.path.startsWith("/cdn/") && exchange.requestHeaders.getFirst("Referer")?.contains("/shop/") != true
+            if (hotlinked) {
+                exchange.sendResponseHeaders(403, -1)
+            } else if (page == null) {
                 exchange.sendResponseHeaders(404, -1)
             } else {
                 exchange.responseHeaders.add("Content-Type", page.first)
@@ -68,6 +72,14 @@ class WebPhotosTest {
     }
 
     @Test
+    fun `says which page a photo is for`() = runBlocking {
+        pages["/shop/aes420"] = html("""<meta property="og:image" content="/cdn/aes420.png">""")
+        pages["/cdn/aes420.png"] = "image/png" to onWhite
+        assertContentEquals(onWhite, webPhotos.find(listOf("$base/shop/aes420"))!!.bytes)
+        assertNull(webPhotos.find(listOf("$base/cdn/aes420.png")))
+    }
+
+    @Test
     fun `takes an image file's address too, but not icons or files that aren't images`() = runBlocking {
         pages["/img/white.png"] = "image/jpeg" to onWhite // the type comes from the file itself
         pages["/img/tiny.png"] = "image/png" to tiny
@@ -97,6 +109,8 @@ class WebPhotosTest {
     fun `finds a page's product photos however they're written`() {
         val page = "https://shop.example/parts/ne555p".toHttpUrl()
         val html = """
+            <meta name="description" content="">
+            <meta property="og:image" content=''>
             <link href="/img/link.jpg" rel="image_src">
             <meta content="https://cdn.example/og.jpg?w=800&amp;h=800" property="og:image">
             <meta name='twitter:image' content='//cdn.example/twitter.jpg'>
