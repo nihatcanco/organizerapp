@@ -83,7 +83,8 @@ class Ai(
         val suggestion = suggestItem(answer.text)
         if (image != null) return suggestion
         if (suggestion.photoPages.isEmpty()) {
-            log.info("Claude named no pages with a photo of {}", name)
+            // The whole answer, to tell an empty list from addresses in a form that couldn't be read.
+            log.info("Claude named no pages with a photo of {}. Its answer: {}", name, answer.text.take(2000))
             return suggestion
         }
         log.info("Looking for a photo of {} at {}", name, suggestion.photoPages.joinToString(", "))

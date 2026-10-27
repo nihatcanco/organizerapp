@@ -46,7 +46,8 @@ internal fun itemQuestion(name: String?, photo: Boolean): String {
     val search = if (photo) {
         "You can search the web to identify the exact item and to check facts that aren't printed on it"
     } else {
-        "You can search the web to identify the exact item, to check facts that the name doesn't say and to find a photo of it"
+        "You can search the web to identify the exact item, to check facts that the name doesn't say and to find pages with a photo of it, " +
+            "such as its product page or shop listings"
     }
     val nameRule = if (quoted != null) {
         "as given."
@@ -72,9 +73,10 @@ internal fun itemQuestion(name: String?, photo: Boolean): String {
     val photosRule = if (photo) {
         ""
     } else {
-        "\n- photos: up to five addresses from your search of pages that show this exact item, best first, each from a different site, " +
-            "such as the maker's product page, shops and marketplaces; an image file's own address works too. Prefer ones whose photo " +
-            "shows the item alone on a white or transparent background. [] when no page is surely about this exact item."
+        "\n- photos: a list of up to five addresses, copied exactly from your search results, of pages about this exact item that " +
+            "likely show a photo of it: the maker's product page, shop and marketplace listings, reviews. Each from a different site, " +
+            "best first; an image file's own address works too. If your searches found no such page, search for one. Prefer pages " +
+            "whose photo shows the item alone on a white or transparent background. [] only when no result is about this exact item."
     }
     return """
         |$task, and answer with only a JSON object on one line. $search; use what you find only when it is surely about this exact item.
@@ -120,9 +122,23 @@ fun suggestItem(answer: String): ItemSuggestion {
             .filter { it.isNotEmpty() }.distinctBy(::normalizeForSearch).take(4),
         properties = properties(root["properties"]),
         notes = root["notes"].text()?.takeIf { it != name },
-        photoPages = root["photos"].items().mapNotNull { it.text() }
-            .filter { it.startsWith("https://") || it.startsWith("http://") }.distinct().take(5),
+        photoPages = root["photos"].items().mapNotNull(::webAddress).distinct().take(5),
     )
+}
+
+private val BARE_ADDRESS = Regex("""[\w-]+(\.[\w-]+)+(/\S*)?""")
+
+/**
+ * A web address from the photos list: a string, or an object with a "url" in case the model writes them so.
+ * Addresses without "https://" get it; anything else, such as file: or javascript: addresses, is left out.
+ */
+private fun webAddress(element: JsonElement): String? {
+    val text = (if (element is JsonObject) (element["url"] ?: element["address"] ?: element["href"]) else element).text() ?: return null
+    return when {
+        text.startsWith("https://") || text.startsWith("http://") -> text
+        BARE_ADDRESS.matches(text) -> "https://$text"
+        else -> null
+    }
 }
 
 /** Properties as {"Brand": "Persil"}, or as [{"name": "Brand", "value": "Persil"}] in case the model writes them so. */

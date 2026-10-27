@@ -99,9 +99,10 @@ class ItemSuggestionTest {
         assertContains(name, "Someone is adding \"NE555P\" to a home inventory")
         assertContains(name, "- name: as given.")
         assertContains(name, "never guess a value you aren't sure of")
-        assertContains(name, "to check facts that the name doesn't say and to find a photo of it")
+        assertContains(name, "to check facts that the name doesn't say and to find pages with a photo of it")
         assertContains(name, "\"photos\": []")
-        assertContains(name, "- photos: up to five addresses from your search of pages that show this exact item, best first, each from a different site")
+        assertContains(name, "- photos: a list of up to five addresses, copied exactly from your search results")
+        assertContains(name, "If your searches found no such page, search for one.")
 
         val both = itemQuestion(name = "Resistor 10k", photo = true)
         assertContains(both, "This photo shows \"Resistor 10k\", something to add")
@@ -124,6 +125,12 @@ class ItemSuggestionTest {
             suggestion.photoPages,
         )
         assertEquals(emptyList(), suggestItem("""{"name": "NE555P", "photos": null}""").photoPages)
+        assertEquals(
+            listOf("https://reverb.com/item/123-yamaha-aes420", "https://www.thomann.de/aes420.htm", "https://usa.yamaha.com/aes/"),
+            suggestItem(
+                """{"photos": [{"url": "https://reverb.com/item/123-yamaha-aes420", "site": "Reverb"}, "www.thomann.de/aes420.htm", {"address": "usa.yamaha.com/aes/"}, "Yamaha's site", {"site": "eBay"}]}""",
+            ).photoPages,
+        )
         assertEquals(emptyList(), suggestItem("""{"properties": {"photos": "https://a.example/"}}""").properties)
     }
 }
