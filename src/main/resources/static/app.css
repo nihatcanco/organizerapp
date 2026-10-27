@@ -514,10 +514,12 @@ input[type="file"]::file-selector-button {
 .ai-status.ai-ok { background: var(--accent-soft); }
 .ai-status.ai-warn { background: var(--warn-soft); }
 .ai-status.ai-error { background: var(--danger-soft); color: var(--danger); }
-.ai-status details { margin-top: 6px; color: var(--muted); }
-.ai-status summary { cursor: pointer; }
-.ai-status pre { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 0.85rem/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .checkbox input { width: 18px; height: 18px; accent-color: var(--accent); }
+
+.api-key { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 12px 0; }
+.api-key p { margin: 0; }
+.setting { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin: 20px 0 8px; padding-top: 16px; border-top: 1px solid var(--border); }
+.setting .hint { margin: 0; }
 
 .camera {
   width: min(760px, calc(100vw - 32px));

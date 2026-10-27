@@ -252,6 +252,7 @@ private suspend fun ApplicationCall.respondItemForm(
 ) {
     val tagSuggestions = app.items.tags().sortedByDescending { it.count }.take(20).map { it.name }
     val propertyNames = app.items.propertyNames()
+    val ai = app.ai.enabled()
     val title = if (item == null) "Add item" else "Edit item"
     val location = form.locationId.toLongOrNull()
     val cancel = when {
@@ -387,21 +388,27 @@ private suspend fun ApplicationCall.respondItemForm(
                     attributes["hidden"] = ""
                     attributes["data-photo-thumb"] = ""
                 }
-                if (app.photoReader != null) {
+                if (ai) {
                     // Needs JavaScript, so app.js reveals it.
                     div("ai-reader") {
                         attributes["hidden"] = ""
                         button(type = ButtonType.button, classes = "btn btn-sm") {
-                            attributes["data-read-photo"] = item?.takeIf { it.photoVersion != null }?.id?.toString().orEmpty()
+                            attributes["data-ai-fill"] = item?.takeIf { it.photoVersion != null }?.id?.toString().orEmpty()
                             icon("sparkles")
-                            +"Fill in from photo"
+                            +"Fill in with AI"
                         }
-                        p("hint") { +"Reads labels and markings with an AI model that runs on this computer." }
+                        p("hint") { +"Fills in the rest from the photo, the name, or both, with Claude by Anthropic." }
                         div("ai-status") {
                             attributes["data-ai-status"] = ""
                             attributes["role"] = "status"
                             attributes["hidden"] = ""
                         }
+                    }
+                } else {
+                    p("hint") {
+                        +"To fill in items from a photo or name with AI, add an Anthropic API key in "
+                        a("/settings") { +"Settings" }
+                        +"."
                     }
                 }
             }

@@ -16,14 +16,14 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.parameters
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
-import org.junit.jupiter.api.Assumptions.assumeTrue
 import organizer.AppConfig
+import organizer.ai.FakeClaude
 import organizer.ai.SAMPLE_LABEL
 import organizer.ai.labelImage
-import organizer.ai.testModelDirectory
 import organizer.ai.toPng
 import organizer.db.Database
-import java.nio.file.Path
+import organizer.db.query
+import java.sql.DriverManager
 import kotlin.io.path.createTempDirectory
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -41,11 +41,16 @@ class AppTest {
         dir.toFile().deleteRecursively()
     }
 
-    private fun ApplicationTestBuilder.client(config: AppConfig = AppConfig(), models: Path = dir.resolve("models")): HttpClient {
+    // What the stand-in for Claude was asked.
+    private val asked = mutableListOf<FakeClaude.Question>()
+
+    private fun ApplicationTestBuilder.client(config: AppConfig = AppConfig(machineId = "test-machine")): HttpClient {
         val database = Database.open(dir.resolve("test.db"))
-        application { organizer(config.copy(modelsPath = models), database) }
+        application { organizer(config, database) { key -> FakeClaude(key, asked) } }
         return createClient { followRedirects = false }
     }
+
+    private suspend fun HttpClient.saveApiKey(key: String) = submitForm("/settings/api-key", parameters { append("api_key", key) }) { sameOrigin() }
 
     // Browsers send Host and Origin with every form post, and the CSRF check compares them.
     // The test client sends neither on its own.
@@ -193,40 +198,86 @@ class AppTest {
     }
 
     @Test
-    fun `photo reading waits until its model is downloaded`() = testApplication {
+    fun `without an API key the item form points to Settings`() = testApplication {
         val client = client()
-        val status = client.get("/ai/status").bodyAsText()
-        assertContains(status, "\"state\":\"missing\"")
-        assertContains(status, "\"total\":550067409")
-        val read = client.submitFormWithBinaryData("/ai/read", formData { append("item", "1") }) { sameOrigin() }
-        assertEquals(HttpStatusCode.Conflict, read.status)
-        assertContains(client.get("/items/new").bodyAsText(), "Fill in from photo")
+        val form = client.get("/items/new").bodyAsText()
+        assertFalse("Fill in with AI" in form)
+        assertContains(form, "href=\"/settings\"")
+        val fill = client.submitFormWithBinaryData("/ai/fill", formData { append("name", "NE555P") }) { sameOrigin() }
+        assertEquals(HttpStatusCode.Conflict, fill.status)
+        assertTrue(asked.isEmpty())
     }
 
     @Test
-    fun `photo reading can be switched off`() = testApplication {
-        val client = client(AppConfig(ai = false))
-        assertEquals(HttpStatusCode.NotFound, client.get("/ai/status").status)
-        assertFalse("Fill in from photo" in client.get("/items/new").bodyAsText())
+    fun `an API key is checked, stored encrypted and never shown again`() = testApplication {
+        val client = client()
+        val key = "sk-ant-good-0123456789abcdefghij-wxyz"
+
+        val rejected = client.saveApiKey("sk-ant-bad-0123456789abcdefghijklmn")
+        assertEquals(HttpStatusCode.BadRequest, rejected.status)
+        assertContains(rejected.bodyAsText(), "accept the API key. Check it in Settings.")
+        assertEquals(HttpStatusCode.BadRequest, client.saveApiKey("not a key").status)
+
+        val saved = client.saveApiKey(key)
+        assertEquals(HttpStatusCode.SeeOther, saved.status)
+        val page = client.get("/settings").bodyAsText()
+        assertContains(page, "sk-ant-…wxyz")
+        assertFalse(key in page)
+        assertContains(client.get("/items/new").bodyAsText(), "Fill in with AI")
+
+        val stored = DriverManager.getConnection("jdbc:sqlite:${dir.resolve("test.db")}").use { c ->
+            c.query("SELECT value FROM settings WHERE name = 'anthropic_api_key'") { it.getString(1) }.single()
+        }
+        assertFalse(key in stored)
+        assertFalse("0123456789abcdefghij" in stored)
+
+        assertEquals(HttpStatusCode.SeeOther, client.submitForm("/settings/api-key/remove") { sameOrigin() }.status)
+        assertFalse("Fill in with AI" in client.get("/items/new").bodyAsText())
     }
 
-    /** Needs the real model: ./gradlew test -Dorganizer.test.models=path/to/florence-2-base-ft */
     @Test
-    fun `fills in item details from an uploaded photo`() = testApplication {
-        val models = testModelDirectory()
-        assumeTrue(models != null, "no model directory given")
-        val client = client(models = models!!.parent)
-        val response = client.submitFormWithBinaryData("/ai/read", formData {
-            append("photo", labelImage(*SAMPLE_LABEL).toPng(), Headers.build {
-                append(HttpHeaders.ContentType, "image/png")
-                append(HttpHeaders.ContentDisposition, "filename=\"label.png\"")
-            })
+    fun `fills in items from a photo, a typed name, or both`() = testApplication {
+        val client = client()
+        client.saveApiKey("sk-ant-good-0123456789abcdefghij")
+        val photo = labelImage(*SAMPLE_LABEL).toPng()
+        val photoHeaders = Headers.build {
+            append(HttpHeaders.ContentType, "image/png")
+            append(HttpHeaders.ContentDisposition, "filename=\"label.png\"")
+        }
+
+        val fromPhoto = client.submitFormWithBinaryData("/ai/fill", formData { append("photo", photo, photoHeaders) }) { sameOrigin() }
+        assertEquals(HttpStatusCode.OK, fromPhoto.status)
+        assertContains(fromPhoto.bodyAsText(), "\"quantity\":100")
+        assertContains(fromPhoto.bodyAsText(), "{\"name\":\"Package\",\"value\":\"0603\"}")
+        assertNotNull(asked.last().image)
+        assertContains(asked.last().text, "This photo shows something")
+
+        client.submitFormWithBinaryData("/ai/fill", formData { append("name", "NE555P") }) { sameOrigin() }
+        assertEquals(null, asked.last().image)
+        assertContains(asked.last().text, "Someone is adding \"NE555P\"")
+
+        client.submitFormWithBinaryData("/ai/fill", formData {
+            append("name", "Resistor 10k")
+            append("photo", photo, photoHeaders)
         }) { sameOrigin() }
-        assertEquals(HttpStatusCode.OK, response.status)
-        val json = response.bodyAsText()
-        assertContains(json, "\"name\":\"Resistor 10 kΩ\"")
-        assertContains(json, "\"quantity\":100")
-        assertContains(json, "{\"name\":\"Package\",\"value\":\"0603\"}")
+        assertNotNull(asked.last().image)
+        assertContains(asked.last().text, "This photo shows \"Resistor 10k\"")
+        assertFalse(asked.last().webSearch)
+
+        val nothing = client.submitFormWithBinaryData("/ai/fill", formData { append("name", " ") }) { sameOrigin() }
+        assertEquals(HttpStatusCode.BadRequest, nothing.status)
+        assertEquals(3, asked.size)
+    }
+
+    @Test
+    fun `web search is switched on in Settings`() = testApplication {
+        val client = client()
+        client.saveApiKey("sk-ant-good-0123456789abcdefghij")
+        assertFalse("name=\"web_search\" checked" in client.get("/settings").bodyAsText())
+        client.submitForm("/settings/web-search", parameters { append("web_search", "on") }) { sameOrigin() }
+        client.submitFormWithBinaryData("/ai/fill", formData { append("name", "AMS1117-3.3") }) { sameOrigin() }
+        assertTrue(asked.last().webSearch)
+        assertContains(asked.last().text, "You can search the web")
     }
 
     @Test

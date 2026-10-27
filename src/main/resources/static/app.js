@@ -320,31 +320,34 @@
     }
   }
 
-  // ---------- Fill in item details from a photo, read by the AI model on the server ----------
+  // ---------- Fill in item details with Claude, from the photo, the typed name, or both ----------
 
-  for (const button of document.querySelectorAll('[data-read-photo]')) {
+  for (const button of document.querySelectorAll('[data-ai-fill]')) {
     const form = button.form;
     const photoInput = form.querySelector('input[data-photo-input]');
-    const update = () => { button.disabled = !(photoInput.files.length || button.dataset.readPhoto); };
+    const nameInput = form.elements.namedItem('name');
+    const update = () => {
+      button.disabled = !(photoInput.files.length || savedPhoto(button) || nameInput.value.trim());
+    };
     button.closest('.ai-reader').hidden = false;
     update();
-    button.addEventListener('click', () => readPhoto(button));
-    photoInput.addEventListener('photo-ready', async () => {
+    button.addEventListener('click', () => fillWithAi(button));
+    nameInput.addEventListener('input', update);
+    form.elements.namedItem('remove_photo')?.addEventListener('change', update);
+    photoInput.addEventListener('photo-ready', () => {
       update();
-      // Once the model is downloaded, a new item's photo is read straight away.
-      if (photoInput.files.length && !form.elements.namedItem('name').value.trim()) {
-        const status = await aiStatus().catch(() => null);
-        if (status && status.state === 'ready') readPhoto(button);
-      }
+      // A new item's photo is read straight away, unless a name was typed first.
+      if (photoInput.files.length && !nameInput.value.trim()) fillWithAi(button);
     });
   }
 
-  async function aiStatus() {
-    const response = await fetch('/ai/status', { headers: { Accept: 'application/json' } });
-    return response.json();
+  /** The id of the item whose saved photo Claude may look at, unless it's being removed. */
+  function savedPhoto(button) {
+    const remove = button.form.elements.namedItem('remove_photo');
+    return remove && remove.checked ? '' : button.dataset.aiFill;
   }
 
-  async function readPhoto(button) {
+  async function fillWithAi(button) {
     const form = button.form;
     const status = form.querySelector('[data-ai-status]');
     const show = (message, kind = '') => {
@@ -354,28 +357,16 @@
     };
     button.disabled = true;
     try {
-      let state = await aiStatus();
-      if (state.state === 'missing' || state.state === 'failed') {
-        const size = Math.round(state.total / 1e6);
-        const question = 'Reading photos uses a small AI model that runs on this computer. '
-          + `It needs a one-time download of about ${size} MB. Download it now?`;
-        if (!window.confirm(question)) return;
-        state = await (await fetch('/ai/download', { method: 'POST', headers: { Accept: 'application/json' } })).json();
-      }
-      while (state.state === 'downloading') {
-        show(`Downloading the AI model… ${Math.floor((100 * state.done) / state.total)}%`);
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        state = await aiStatus();
-      }
-      if (state.state !== 'ready') throw new Error(state.error || 'the model could not be downloaded');
-
-      show('Reading the photo…');
       const photoInput = form.querySelector('input[data-photo-input]');
       await photoInput.photoReady;
       const body = new FormData();
+      const name = form.elements.namedItem('name').value.trim();
+      if (name) body.append('name', name);
       if (photoInput.files.length) body.append('photo', photoInput.files[0]);
-      else body.append('item', button.dataset.readPhoto);
-      const response = await fetch('/ai/read', { method: 'POST', body, headers: { Accept: 'application/json' } });
+      else if (savedPhoto(button)) body.append('item', savedPhoto(button));
+      const hasPhoto = body.has('photo') || body.has('item');
+      show(`Asking Claude about ${hasPhoto && name ? 'the photo and name' : hasPhoto ? 'the photo' : 'the name'}…`);
+      const response = await fetch('/ai/fill', { method: 'POST', body, headers: { Accept: 'application/json' } });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error || `the server answered ${response.status}`);
 
@@ -384,21 +375,12 @@
       if (filled.length) {
         show(`Filled in ${filled.join(', ')}. Please check before saving.`, 'ai-ok');
       } else if (found) {
-        show('Nothing new to fill in: the form already has what the photo shows.', 'ai-ok');
+        show('Nothing new to fill in: the form already has what Claude found.', 'ai-ok');
       } else {
-        show('No details found. A sharp, close photo of the label works best.', 'ai-warn');
-      }
-      if (result.text && result.text.length) {
-        const details = document.createElement('details');
-        const summary = document.createElement('summary');
-        const text = document.createElement('pre');
-        summary.textContent = 'Text found in the photo';
-        text.textContent = result.text.join('\n');
-        details.append(summary, text);
-        status.append(details);
+        show(`No details found. ${hasPhoto ? 'A sharp, close photo works best.' : 'A more specific name may help.'}`, 'ai-warn');
       }
     } catch (error) {
-      show(`Couldn't read the photo: ${error.message}.`, 'ai-error');
+      show(`Couldn't fill in: ${error.message.replace(/\.$/, '')}.`, 'ai-error');
     } finally {
       button.disabled = false;
     }

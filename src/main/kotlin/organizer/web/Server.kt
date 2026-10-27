@@ -23,24 +23,42 @@ import io.ktor.server.routing.routing
 import kotlinx.html.a
 import kotlinx.html.p
 import organizer.AppConfig
-import organizer.ai.PhotoReader
+import org.slf4j.LoggerFactory
+import organizer.ai.Ai
+import organizer.ai.AnthropicClaude
+import organizer.ai.Claude
 import organizer.db.Database
 import organizer.store.ItemRepository
 import organizer.store.LocationRepository
+import organizer.store.SecretBox
+import organizer.store.SettingsRepository
+import organizer.store.findMachineId
 import java.security.MessageDigest
 
-class Services(val config: AppConfig, val database: Database) {
+class Services(val config: AppConfig, val database: Database, connect: (apiKey: String) -> Claude) {
     val locations = LocationRepository(database)
     val items = ItemRepository(database)
-    val photoReader: PhotoReader? = if (config.ai) PhotoReader(config.modelsPath.resolve("florence-2-base-ft")) else null
+    val ai: Ai
+
+    init {
+        // The key that encrypts the API key lives next to the database, but never inside it, so backups don't hold it.
+        val machineId = config.machineId ?: findMachineId()
+        if (machineId == null) {
+            LoggerFactory.getLogger("organizer").warn(
+                "No machine ID found, so a saved API key isn't tied to this computer. In Docker, set ORGANIZER_MACHINE_ID (see README.md).",
+            )
+        }
+        ai = Ai(SettingsRepository(database), SecretBox(database.path.resolveSibling("secret.key"), machineId), connect)
+    }
 }
 
 private const val CONTENT_SECURITY_POLICY =
     "default-src 'self'; img-src 'self' data: blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
 
-fun Application.organizer(config: AppConfig, database: Database) {
-    val app = Services(config, database)
-    monitor.subscribe(ApplicationStopped) { app.photoReader?.close() }
+/** The app; [connect] makes the client that talks to Claude, which tests replace. */
+fun Application.organizer(config: AppConfig, database: Database, connect: (apiKey: String) -> Claude = ::AnthropicClaude) {
+    val app = Services(config, database, connect)
+    monitor.subscribe(ApplicationStopped) { app.ai.close() }
 
     install(DefaultHeaders) {
         header("Content-Security-Policy", CONTENT_SECURITY_POLICY)
@@ -94,7 +112,8 @@ fun Application.organizer(config: AppConfig, database: Database) {
             searchRoutes(app)
             labelRoutes(app)
             exportRoutes(app)
-            app.photoReader?.let { aiRoutes(it, app) }
+            settingsRoutes(app)
+            aiRoutes(app)
         }
         if (password != null) authenticate("password", build = routes) else routes()
     }

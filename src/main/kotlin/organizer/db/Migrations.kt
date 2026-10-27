@@ -67,4 +67,13 @@ internal val MIGRATIONS: List<List<String>> = listOf(
         )
         """,
     ),
+    listOf(
+        // App settings made on the Settings page; secret ones are stored encrypted (see store/SecretBox.kt).
+        """
+        CREATE TABLE settings (
+            name  TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        ) WITHOUT ROWID
+        """,
+    ),
 )

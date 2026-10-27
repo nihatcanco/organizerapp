@@ -20,10 +20,11 @@ data class AppConfig(
     val password: String? = null,
     /** Base URL encoded into QR labels, e.g. `http://192.168.1.20:8080`. Derived from the request when null. */
     val publicUrl: String? = null,
-    /** Whether items can be filled in from photos with the built-in AI model. */
-    val ai: Boolean = true,
-    /** Where downloaded AI models are kept. */
-    val modelsPath: Path = Path("data", "models"),
+    /**
+     * This computer's ID, which the saved API key's encryption is tied to (see store/SecretBox.kt). Found by the app
+     * itself, except in Docker, whose containers can't see the computer: there Jenkins passes the host's ID.
+     */
+    val machineId: String? = null,
 ) {
     companion object {
         fun fromEnv(env: Map<String, String> = System.getenv()): AppConfig {
@@ -36,8 +37,7 @@ data class AppConfig(
                 databasePath = databasePath,
                 password = value("ORGANIZER_PASSWORD"),
                 publicUrl = value("ORGANIZER_PUBLIC_URL")?.trimEnd('/'),
-                ai = value("ORGANIZER_AI")?.lowercase() !in setOf("off", "false", "no", "0"),
-                modelsPath = value("ORGANIZER_MODELS")?.let { Path(it) } ?: databasePath.toAbsolutePath().parent.resolve("models"),
+                machineId = value("ORGANIZER_MACHINE_ID"),
             )
         }
     }
@@ -63,7 +63,6 @@ private fun logStartup(config: AppConfig, database: Database) {
         }
         add("  Database:         ${database.path}")
         if (config.password != null) add("  Password protection is on.")
-        if (!config.ai) add("  Reading photos with AI is off.")
     }
     LoggerFactory.getLogger("organizer").info(lines.joinToString("\n"))
 }

@@ -20,7 +20,6 @@ pipeline {
         APP_PORT = '8080'
         // App settings; see "Configuration" in README.md.
         PUBLIC_URL = ''  // e.g. http://organizer.lan:8080, for QR labels
-        AI = 'on'        // 'off' hides Fill in from photo
         // ID of a "Secret text" credential holding the app password; empty for no password.
         PASSWORD_CREDENTIALS_ID = ''
     }
@@ -45,6 +44,15 @@ pipeline {
             }
             steps {
                 script {
+                    // This Windows machine's ID. The container can't see the computer it runs on, and the API key
+                    // saved in Settings is encrypted so that only this computer can decrypt it (see README.md).
+                    // Read before the running app is stopped, so a failure here leaves it running.
+                    def machineId = powershell(returnStdout: true, script: '[Microsoft.Win32.RegistryKey]::OpenBaseKey(' +
+                        "'LocalMachine', 'Registry64').OpenSubKey('SOFTWARE\\Microsoft\\Cryptography').GetValue('MachineGuid')").trim()
+                    if (!machineId) {
+                        error "Couldn't read this computer's MachineGuid from the registry."
+                    }
+
                     bat 'docker build --tag organizer .'
                     if (bat(returnStatus: true, script: '@docker container inspect organizer >nul 2>&1') == 0) {
                         // Gives the app time to close the database before the backup.
@@ -54,12 +62,12 @@ pipeline {
 
                     // Settings reach the container as environment variables (--env with a name only), so no
                     // value, the password included, is pasted into a command line.
-                    def settings = ["ORGANIZER_PUBLIC_URL=${env.PUBLIC_URL}", "ORGANIZER_AI=${env.AI}"]
+                    def settings = ["ORGANIZER_PUBLIC_URL=${env.PUBLIC_URL}", "ORGANIZER_MACHINE_ID=${machineId}"]
                     def start = {
                         withEnv(settings) {
                             bat 'docker run --detach --name organizer --restart unless-stopped ' +
                                 '--publish %APP_PORT%:%APP_PORT% --volume organizer-data:/data --env ORGANIZER_PORT=%APP_PORT% ' +
-                                '--env ORGANIZER_PUBLIC_URL --env ORGANIZER_AI --env ORGANIZER_PASSWORD organizer'
+                                '--env ORGANIZER_PUBLIC_URL --env ORGANIZER_MACHINE_ID --env ORGANIZER_PASSWORD organizer'
                         }
                     }
                     if (env.PASSWORD_CREDENTIALS_ID?.trim()) {
