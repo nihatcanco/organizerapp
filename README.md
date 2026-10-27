@@ -126,7 +126,7 @@ Everything is optional and set through environment variables, passed to the cont
 | `ORGANIZER_MACHINE_ID` | *(found by the app)* | This computer's ID, which the saved API key is tied to; needed in Docker (see [Filling in items with AI](#filling-in-items-with-ai)). |
 
 The Anthropic API key for *Fill in with AI* isn't an environment variable: it's entered on the
-**Settings** page (linked at the bottom of every page).
+**Settings** page (in the top bar of every page).
 
 ## Taking photos
 
@@ -168,7 +168,7 @@ To set it up:
 
 1. Create an API key at [console.anthropic.com](https://console.anthropic.com/settings/keys) (the
    account needs some credit). A Claude.ai subscription doesn't include API use.
-2. Open **Settings** (bottom of every page), paste the key and save. The app checks it with
+2. Open **Settings** (in the top bar), paste the key and save. The app checks it with
    Anthropic first.
 
 What it costs: Anthropic bills the account per use, about $0.0003 a photo and $0.0001 a typed name,
@@ -214,12 +214,12 @@ Everything, photos included, is in one SQLite file, `organizer.db` in the `organ
 Next to it, `secret.key` encrypts the saved API key (see [How the API key is kept](#how-the-api-key-is-kept)).
 A `models/` folder left over from earlier versions, which ran an AI model inside the app, can be deleted.
 
-- **Backup:** use *Download backup* in Settings or at the bottom of any page. It's safe to do while the app is
+- **Backup:** use *Download backup* in Settings. It's safe to do while the app is
   in use. To restore, stop the app (`docker stop organizer`), then, in the folder
   with the downloaded file, run
   `docker run --rm -v organizer-data:/data -v "${PWD}:/restore" --entrypoint sh organizer -c "rm -f /data/organizer.db-wal && cp /restore/<file> /data/organizer.db"`
   with `<file>` replaced by its name, and start the app again (`docker start organizer`).
-- **Export:** *Export CSV* gives you all items for a spreadsheet.
+- **Export:** *Export CSV* in Settings gives you all items for a spreadsheet.
 
 ## Offline and private
 
