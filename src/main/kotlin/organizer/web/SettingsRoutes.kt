@@ -9,13 +9,14 @@ import kotlinx.html.ButtonType
 import kotlinx.html.FormMethod
 import kotlinx.html.a
 import kotlinx.html.button
-import kotlinx.html.checkBoxInput
 import kotlinx.html.code
+import kotlinx.html.dd
 import kotlinx.html.div
+import kotlinx.html.dl
+import kotlinx.html.dt
 import kotlinx.html.form
 import kotlinx.html.h2
 import kotlinx.html.id
-import kotlinx.html.label
 import kotlinx.html.p
 import kotlinx.html.passwordInput
 import kotlinx.html.section
@@ -24,6 +25,8 @@ import kotlinx.html.strong
 import organizer.ai.Ai
 import organizer.ai.AiException
 import organizer.ai.AnthropicClaude
+import java.time.LocalDate
+import java.time.ZoneId
 
 fun Route.settingsRoutes(app: Services) {
     get("/settings") { call.respondSettings(app) }
@@ -43,23 +46,18 @@ fun Route.settingsRoutes(app: Services) {
         app.ai.removeKey()
         call.seeOther("/settings?saved=removed")
     }
-
-    post("/settings/web-search") {
-        app.ai.setWebSearch(call.receiveSubmission().fields.has("web_search"))
-        call.seeOther("/settings?saved=search")
-    }
 }
 
 private suspend fun ApplicationCall.respondSettings(app: Services, errors: Map<String, String> = emptyMap()) {
     val key = app.ai.key()
-    val webSearch = app.ai.webSearch()
+    val spent = app.ai.spending()
+    val spentThisMonth = app.ai.spending(LocalDate.now().withDayOfMonth(1).atStartOfDay(ZoneId.systemDefault()).toInstant())
     val status = if (errors.isEmpty()) HttpStatusCode.OK else HttpStatusCode.BadRequest
     respondPage("Settings", status) {
         pageHeader("Settings")
         when (queryParam("saved")) {
             "key" -> notice("API key saved. Items can now be filled in with AI.")
             "removed" -> notice("API key removed.")
-            "search" -> notice(if (webSearch) "Web search is on." else "Web search is off.")
         }
         section("card") {
             div("card-title") {
@@ -67,10 +65,31 @@ private suspend fun ApplicationCall.respondSettings(app: Services, errors: Map<S
                 if (key is Ai.Key.Saved) span("badge badge-on") { +"On" } else span("badge") { +"Off" }
             }
             p {
-                +"Organizer can fill in an item's tags, properties and notes from its photo, its name, or both, with "
-                +"${AnthropicClaude.MODEL_NAME} by Anthropic. It needs an API key from "
+                +"Organizer can fill in an item's tags, properties and notes from its photo, its name, or both, and find a photo "
+                +"for an item added by name. Claude searches the web for what the photo or name doesn't say. It needs an API key from "
                 a("https://console.anthropic.com/settings/keys") { +"console.anthropic.com" }
-                +". Anthropic charges that account about $0.0003 a photo and $0.0001 a name: 100 photos cost about 3¢."
+                +". Anthropic charges that account about $0.0003 a photo and $0.0001 a name, plus 1¢ for each web search."
+            }
+            dl("properties ai-facts") {
+                dt { +"Model" }
+                dd {
+                    +"${AnthropicClaude.MODEL_NAME} with web search "
+                    code { +AnthropicClaude.MODEL }
+                }
+                dt { +"Spent" }
+                dd {
+                    if (spent.requests == 0) {
+                        +"Nothing yet"
+                    } else {
+                        +"${formatDollars(spentThisMonth.dollars)} this month, ${formatDollars(spent.dollars)} in total"
+                        span("hint") {
+                            +"${plural(spent.requests, "question")} and ${plural(spent.webSearches.toInt(), "web search", "web searches")} "
+                            +"since ${formatDate(spent.since!!)}, at Anthropic's list prices. The bill itself is at "
+                            a("https://console.anthropic.com/settings/billing") { +"console.anthropic.com" }
+                            +"."
+                        }
+                    }
+                }
             }
             when (key) {
                 is Ai.Key.Saved -> div("api-key") {
@@ -106,33 +125,12 @@ private suspend fun ApplicationCall.respondSettings(app: Services, errors: Map<S
                     }
                 }
             }
-            if (key is Ai.Key.Saved) {
-                // app.js saves it as soon as the switch is flipped, and hides the Save button.
-                form("/settings/web-search", method = FormMethod.post, classes = "setting") {
-                    attributes["data-autosubmit"] = ""
-                    label("switch") {
-                        checkBoxInput(name = "web_search") {
-                            attributes["role"] = "switch"
-                            checked = webSearch
-                        }
-                        span("switch-track") {}
-                        span("switch-text") {
-                            strong { +"Web search" }
-                            span { +"Let Claude search the web for details the photo or name doesn't give." }
-                        }
-                    }
-                    p("hint") { +"About 1¢ a search on top of the usual price, and a few seconds longer. Claude searches only when it needs to." }
-                    button(type = ButtonType.submit, classes = "btn btn-sm") {
-                        attributes["data-autosubmit-button"] = ""
-                        +"Save"
-                    }
-                }
-            }
             div("fine-print") {
                 p("hint") {
                     strong { +"Privacy: " }
                     +"the photo and name of an item you fill in with AI are sent to Anthropic. That happens when you press "
-                    +"Fill in with AI, or choose a photo for a new item that has no name yet."
+                    +"Fill in with AI, or choose a photo for a new item that has no name yet. A photo found for an item is "
+                    +"downloaded by Organizer from the page Claude found."
                 }
                 if (app.config.password == null) {
                     p("hint") {

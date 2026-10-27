@@ -18,6 +18,10 @@ data class ItemSuggestion(
     val tags: List<String>,
     val properties: List<Property>,
     val notes: String?,
+    /** Web pages or image files that show the item, best first, when Claude was asked for them. */
+    val photoPages: List<String> = emptyList(),
+    /** The photo found at [photoPages]. */
+    val photo: WebPhoto? = null,
 )
 
 // What Part number means follows the list: written inside it, as "Part number (the maker's)", Claude sometimes
@@ -27,9 +31,10 @@ private const val PROPERTY_LIST = "Brand, Model, Size, Weight, Volume, Color, Ma
 
 /**
  * What Claude is asked about an item, from its photo, its typed [name], or both; [suggestItem] reads the answer.
- * With [webSearch], Claude may look things up that the photo or name doesn't say.
+ * Claude may search the web for what the photo or name doesn't say, and for an item without a photo, names
+ * pages that show one.
  */
-internal fun itemQuestion(name: String?, photo: Boolean, webSearch: Boolean): String {
+internal fun itemQuestion(name: String?, photo: Boolean): String {
     require(photo || name != null) { "Needs a photo or a name" }
     val quoted = name?.let { JsonPrimitive(it).toString() }
     val kinds = "food, a household product, a tool, a spare part, an electronic component or anything else"
@@ -38,11 +43,10 @@ internal fun itemQuestion(name: String?, photo: Boolean, webSearch: Boolean): St
         photo -> "This photo shows something to add to a home inventory: $kinds. Say what it is, reading any label or packaging"
         else -> "Someone is adding $quoted to a home inventory: $kinds. Fill in the rest from what the name says and what you know about this exact item"
     }
-    val search = if (webSearch) {
-        " You can search the web to identify the exact item and to check facts that ${if (photo) "aren't printed on it" else "the name doesn't say"}; " +
-            "use what you find only when it is surely about this exact item."
+    val search = if (photo) {
+        "You can search the web to identify the exact item and to check facts that aren't printed on it"
     } else {
-        ""
+        "You can search the web to identify the exact item, to check facts that the name doesn't say and to find a photo of it"
     }
     val nameRule = if (quoted != null) {
         "as given."
@@ -55,30 +59,38 @@ internal fun itemQuestion(name: String?, photo: Boolean, webSearch: Boolean): St
     } else {
         "how many pieces when the name says so (\"pack of 100\" is 100); otherwise null."
     }
-    val found = if (webSearch) " or that you found for this exact item" else ""
     val propertyRule = if (photo) {
-        "facts printed on it or certain from what it is$found, under these names where they fit, not the label's own: $PROPERTY_LIST. " +
-            "Copy values exactly as printed. Leave out what isn't printed unless it's plain from the item itself" +
-            (if (webSearch) " or you found it for this exact item" else "") + ", and never guess a brand or manufacturer."
+        "facts printed on it or certain from what it is or that you found for this exact item, under these names where they fit, " +
+            "not the label's own: $PROPERTY_LIST. Copy values exactly as printed. Leave out what isn't printed unless it's plain from " +
+            "the item itself or you found it for this exact item, and never guess a brand or manufacturer."
     } else {
-        "facts the name states or that are always true of this exact item$found, under these names where they fit: $PROPERTY_LIST. " +
-            "When the name could be several different products, give only what they all share; never guess a value you aren't sure of."
+        "facts the name states or that are always true of this exact item or that you found for it, under these names where they fit: " +
+            "$PROPERTY_LIST. When the name could be several different products, give only what they all share; never guess a value you aren't sure of."
+    }
+    // An item with a photo has one already. Addresses must come from the search: remembered ones are mostly wrong.
+    val photosField = if (photo) "" else """, "photos": []"""
+    val photosRule = if (photo) {
+        ""
+    } else {
+        "\n- photos: up to three addresses from your search of pages that show this exact item, best first, such as the maker's product page " +
+            "or a shop's; an image file's own address works too. Prefer ones whose photo shows the item alone on a white or transparent " +
+            "background. [] when no page is surely about this exact item."
     }
     return """
-        |$task, and answer with only a JSON object on one line:$search
-        |{"name": "…", "quantity": null, "tags": [], "properties": {}, "notes": null}
+        |$task, and answer with only a JSON object on one line. $search; use what you find only when it is surely about this exact item.
+        |{"name": "…", "quantity": null, "tags": [], "properties": {}, "notes": null$photosField}
         |
         |- name: $nameRule
         |- quantity: $quantityRule
         |- tags: one to three lowercase categories, such as ["food", "fruit"], ["cleaning", "detergent"] or ["resistor", "smd"].
         |- properties: $propertyRule
-        |- notes: one short sentence on what it is or what it's for, or null.
+        |- notes: one short sentence on what it is or what it's for, or null.$photosRule
     """.trimMargin()
 }
 
 private val LENIENT = Json { isLenient = true }
 private val NOTHING = setOf("", "null", "none", "n/a", "unknown", "-")
-private val FIELDS = setOf("name", "quantity", "tags", "properties", "notes")
+private val FIELDS = setOf("name", "quantity", "tags", "properties", "notes", "photos")
 
 // Models sometimes copy a label's own key ("Mfr.Part #") instead of the name it was asked to use, or add
 // a remark in brackets ("Part number (the maker's)").
@@ -108,6 +120,8 @@ fun suggestItem(answer: String): ItemSuggestion {
             .filter { it.isNotEmpty() }.distinctBy(::normalizeForSearch).take(4),
         properties = properties(root["properties"]),
         notes = root["notes"].text()?.takeIf { it != name },
+        photoPages = root["photos"].items().mapNotNull { it.text() }
+            .filter { it.startsWith("https://") || it.startsWith("http://") }.distinct().take(3),
     )
 }
 

@@ -72,3 +72,9 @@ class SearchPage(val items: List<Item>, val total: Int)
 data class TagCount(val name: String, val count: Int)
 
 data class Stats(val items: Int, val locations: Int, val lowStock: Int, val unsorted: Int)
+
+/** What one question to Claude used, and its price in US dollars at Anthropic's list prices. */
+data class AiUsage(val inputTokens: Long, val outputTokens: Long, val webSearches: Long, val dollars: Double)
+
+/** Questions to Claude added up; [since] is when the first of them was asked. */
+data class AiSpending(val requests: Int, val webSearches: Long, val dollars: Double, val since: Instant?)

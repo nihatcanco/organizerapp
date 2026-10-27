@@ -12,8 +12,10 @@ import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
+import kotlinx.serialization.json.putJsonObject
 import organizer.ai.AiException
 import organizer.ai.ItemSuggestion
+import java.util.Base64
 
 /** The JSON endpoint behind the "Fill in with AI" button on the item form (see app.js). */
 fun Route.aiRoutes(app: Services) {
@@ -56,4 +58,12 @@ private fun ItemSuggestion.toJson() = buildJsonObject {
         }
     }
     notes?.let { put("notes", it) }
+    // app.js puts it in the photo field, as if it had been chosen there.
+    photo?.let { photo ->
+        putJsonObject("photo") {
+            put("type", photo.contentType)
+            put("data", Base64.getEncoder().encodeToString(photo.bytes))
+            put("source", photo.source)
+        }
+    }
 }

@@ -156,6 +156,14 @@ empty fields, highlights what it filled in, and never saves anything by itself, 
 suggestions before saving. Choosing a photo for a new item that has no name yet fills the form in
 straight away.
 
+Claude searches the web for what the photo or name doesn't say, such as a part's specifications.
+For an item without a photo, it also names up to three pages that show it, preferring the maker's
+or a shop's product page. Organizer downloads those pages' product photos and puts one in the photo
+field, preferring a photo on a white or transparent background. The status line says which site
+it's from. Organizer only downloads from addresses on the public internet, never from this computer
+or the local network, and identifies itself honestly, so shops that block automated downloads
+don't give a photo.
+
 To set it up:
 
 1. Create an API key at [console.anthropic.com](https://console.anthropic.com/settings/keys) (the
@@ -163,12 +171,11 @@ To set it up:
 2. Open **Settings** (bottom of every page), paste the key and save. The app checks it with
    Anthropic first.
 
-What it costs: Anthropic bills the account per use, about $0.0003 a photo and $0.0001 a typed name
-(100 photos cost about 3¢). An answer takes about 2 seconds.
-
-**Web search** is off by default. Switched on in Settings, Claude may look up details the photo or
-name doesn't give, such as a part's specifications. It searches only when it needs to; each search
-costs about 1¢ more and adds a few seconds.
+What it costs: Anthropic bills the account per use, about $0.0003 a photo and $0.0001 a typed name,
+plus 1¢ for each web search. Claude searches only when it needs to, but a typed name usually means
+one search, to find a photo. An answer takes about 2 seconds, or a few more with a search.
+**Settings** names the model and shows what AI has cost this month and in total, worked out from
+Anthropic's list prices for every question asked. The bill itself is in the Anthropic Console.
 
 ### How the API key is kept
 
@@ -244,10 +251,11 @@ must pass the original `Host` header through for that check to work.
 ```
 src/main/kotlin/organizer/
   Main.kt                    entry point and configuration
-  ai/                        Fill in with AI: the Claude client, the question and its answer, the saved key
+  ai/                        Fill in with AI: the Claude client, the question and its answer, the saved key,
+                             photo downloads (WebPhotos.kt)
   db/                        SQLite access and schema migrations
   model/                     data classes, location tree, search normalization, name ranges
-  store/                     repositories (all SQL lives here), settings and their encryption
+  store/                     repositories (all SQL lives here), settings and their encryption, AI usage
   web/                       Ktor setup, routes and HTML views (kotlinx.html)
 src/main/resources/static/   app.css, app.js (progressive enhancement, no build step)
 ```

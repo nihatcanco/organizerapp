@@ -4,17 +4,23 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import organizer.model.AiSpending
 import organizer.store.SecretBox
 import organizer.store.SettingsRepository
+import organizer.store.UsageRepository
+import java.time.Instant
 
 /**
  * Filling in items with Claude, once an Anthropic API key is saved in Settings. The key is checked with Anthropic,
- * then stored encrypted by [secrets]; pages only ever see its last four characters.
+ * then stored encrypted by [secrets]; pages only ever see its last four characters. For items added by name,
+ * [photos] downloads a photo from the pages Claude found.
  */
 class Ai(
     private val settings: SettingsRepository,
     private val secrets: SecretBox,
+    private val usage: UsageRepository,
     private val connect: (apiKey: String) -> Claude,
+    private val photos: PhotoFinder,
 ) : AutoCloseable {
 
     sealed interface Key {
@@ -41,11 +47,8 @@ class Ai(
 
     suspend fun enabled(): Boolean = key() is Key.Saved
 
-    suspend fun webSearch(): Boolean = settings.get(WEB_SEARCH) == "on"
-
-    suspend fun setWebSearch(on: Boolean) {
-        if (on) settings.set(WEB_SEARCH, "on") else settings.remove(WEB_SEARCH)
-    }
+    /** What questions to Claude have cost since [from], or ever. */
+    suspend fun spending(from: Instant? = null): AiSpending = usage.spending(from)
 
     /** Checks [apiKey] with Anthropic, then saves it encrypted. Throws [AiException] when it can't be used. */
     suspend fun saveKey(apiKey: String) {
@@ -66,16 +69,19 @@ class Ai(
     }
 
     /**
-     * What Claude makes of an item from its [photo], its typed [name], or both. Throws [AiException] when there is
-     * no key, or Claude can't answer.
+     * What Claude makes of an item from its [photo], its typed [name], or both, with a photo from the web when
+     * there was none. Throws [AiException] when there is no key, or Claude can't answer.
      */
     suspend fun fill(photo: ByteArray?, name: String?): ItemSuggestion {
         require(photo != null || name != null) { "Needs a photo or a name" }
         val claude = client() ?: throw AiException("Add an Anthropic API key in Settings first")
         val image = photo?.let { withContext(Dispatchers.Default) { ClaudeImage.of(it) } }
-        val webSearch = webSearch()
-        val answer = withContext(Dispatchers.IO) { claude.ask(itemQuestion(name, image != null, webSearch), image, webSearch) }
-        return suggestItem(answer)
+        val answer = withContext(Dispatchers.IO) { claude.ask(itemQuestion(name, image != null), image) }
+        usage.record(AnthropicClaude.MODEL, answer.usage)
+        if (answer.refused) throw AiException("Claude declined to describe this item")
+        val suggestion = suggestItem(answer.text)
+        if (image != null || suggestion.photoPages.isEmpty()) return suggestion
+        return suggestion.copy(photo = photos.find(suggestion.photoPages))
     }
 
     /** One client per key, kept for its connections; a new key replaces it. */
@@ -97,11 +103,11 @@ class Ai(
 
     override fun close() {
         dropClient()
+        photos.close()
     }
 
     private companion object {
         const val API_KEY = "anthropic_api_key"
-        const val WEB_SEARCH = "ai_web_search"
         val KEY_PATTERN = Regex("""sk-ant-[A-Za-z0-9_-]{20,500}""")
     }
 }

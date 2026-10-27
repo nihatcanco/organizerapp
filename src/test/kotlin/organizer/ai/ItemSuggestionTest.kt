@@ -88,32 +88,39 @@ class ItemSuggestionTest {
 
     @Test
     fun `asks about the photo, the typed name, or both`() {
-        val photo = itemQuestion(name = null, photo = true, webSearch = false)
+        val photo = itemQuestion(name = null, photo = true)
         assertContains(photo, "This photo shows something to add")
         assertContains(photo, "- name: short, as written on a box.")
         assertContains(photo, "Copy values exactly as printed.")
+        assertContains(photo, "You can search the web to identify the exact item and to check facts that aren't printed on it")
+        assertFalse("photos" in photo)
 
-        val name = itemQuestion(name = "NE555P", photo = false, webSearch = false)
+        val name = itemQuestion(name = "NE555P", photo = false)
         assertContains(name, "Someone is adding \"NE555P\" to a home inventory")
         assertContains(name, "- name: as given.")
         assertContains(name, "never guess a value you aren't sure of")
-        assertFalse("photo" in name.lowercase())
+        assertContains(name, "to check facts that the name doesn't say and to find a photo of it")
+        assertContains(name, "\"photos\": []")
+        assertContains(name, "- photos: up to three addresses from your search")
 
-        val both = itemQuestion(name = "Resistor 10k", photo = true, webSearch = false)
+        val both = itemQuestion(name = "Resistor 10k", photo = true)
         assertContains(both, "This photo shows \"Resistor 10k\", something to add")
         assertContains(both, "reading any label")
-        assertFalse("search" in both)
+        assertFalse("photos" in both)
     }
 
     @Test
     fun `a typed name can't break out of its quotes`() {
-        assertContains(itemQuestion(name = "12\" ruler", photo = false, webSearch = false), "adding \"12\\\" ruler\" to")
+        assertContains(itemQuestion(name = "12\" ruler", photo = false), "adding \"12\\\" ruler\" to")
     }
 
     @Test
-    fun `may search the web when that's switched on`() {
-        val question = itemQuestion(name = "AMS1117-3.3", photo = false, webSearch = true)
-        assertContains(question, "You can search the web to identify the exact item and to check facts that the name doesn't say")
-        assertContains(question, "or that you found for this exact item")
+    fun `reads the photo pages, keeping only web addresses`() {
+        val suggestion = suggestItem(
+            """{"name": "NE555P", "photos": ["https://www.ti.com/product/NE555", "file:///etc/passwd", "javascript:alert(1)", "https://www.ti.com/product/NE555", "http://a.example/1.jpg", "https://b.example/", "https://c.example/"]}""",
+        )
+        assertEquals(listOf("https://www.ti.com/product/NE555", "http://a.example/1.jpg", "https://b.example/"), suggestion.photoPages)
+        assertEquals(emptyList(), suggestItem("""{"name": "NE555P", "photos": null}""").photoPages)
+        assertEquals(emptyList(), suggestItem("""{"properties": {"photos": "https://a.example/"}}""").properties)
     }
 }

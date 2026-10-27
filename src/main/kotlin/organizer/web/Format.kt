@@ -25,6 +25,9 @@ fun relativeTime(instant: Instant, now: Instant = Instant.now()): String {
     }
 }
 
+/** US dollars, to a hundredth of a cent below a dollar: a single question costs a fraction of a cent. */
+fun formatDollars(dollars: Double): String = "$" + String.format(Locale.ROOT, if (dollars < 1) "%.4f" else "%.2f", dollars)
+
 private val URL = Regex("""https?://[^\s<>"']+[^\s<>"'.,;:!?)\]}]""")
 
 /** Text with any http(s) links made clickable, e.g. datasheet URLs in notes. */
