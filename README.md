@@ -16,8 +16,9 @@ Kotlin + Ktor on the server, SQLite for storage, server-rendered HTML with a lit
   ignores case and accents, and updates as you type.
 - **QR labels** — print labels for drawers and boxes; scanning one with your phone camera opens that location.
 - **Take photo** — opens the camera on phones, and the webcam on computers (photos are shrunk before uploading).
-- **Fill in from photo** — a small AI model that runs inside the app reads bag labels and part markings
-  and fills in the name, quantity, tags and properties for you to check.
+- **Fill in with AI** — with an Anthropic API key, Claude recognizes the item from its photo (a bag of
+  resistors, a banana, a bottle of detergent), its typed name, or both, reads any label and fills in the
+  name, quantity, tags and properties for you to check.
 - **Exports** — CSV for spreadsheets, and a one-click backup of the whole database.
 
 ## Running it
@@ -35,7 +36,7 @@ docker run -d --name organizer --restart unless-stopped -p 18420:18420 -v organi
 or this computer's network address, such as `http://192.168.1.20:18420`, on your phone (it must be on
 the same Wi-Fi). Tip: use "Add to Home Screen" in your phone's browser for an app-like icon.
 
-Your data and the AI model are kept in the `organizer-data` volume, so they survive updates.
+Your data is kept in the `organizer-data` volume, so it survives updates.
 Settings from [Configuration](#configuration) are passed with `-e`, e.g. `-e ORGANIZER_PASSWORD=drawers`.
 To update by hand, build the jar and the image again, then:
 
@@ -88,10 +89,10 @@ volume `organizer-data`, and logs are shown by `docker logs organizer`. To go ba
   can reach the app. The deploy doesn't change the firewall; add the rule yourself, preferably for
   private and domain networks only.
 
-**Settings** are in the `environment` block of the `Jenkinsfile`: `PUBLIC_URL`, `AI` and
-`PASSWORD_CREDENTIALS_ID`. For a password, add a *Secret text* credential in Jenkins (*Manage
-Jenkins › Credentials*) and put its ID in `PASSWORD_CREDENTIALS_ID`. Every build of `main` is
-deployed; in a multibranch job, other branches are only built and tested.
+**Settings** are in the `environment` block of the `Jenkinsfile`: `PUBLIC_URL` and
+`PASSWORD_CREDENTIALS_ID`. For a password, add a *Secret text* credential in Jenkins (*Manage Jenkins › Credentials*) and put its ID in
+`PASSWORD_CREDENTIALS_ID`. Every build of `main` is deployed; in a multibranch job, other branches are only
+built and tested.
 
 ### Running Jenkins on your own Windows PC
 
@@ -116,13 +117,16 @@ deployed; in a multibranch job, other branches are only built and tested.
 ## Configuration
 
 Everything is optional and set through environment variables, passed to the container with `-e`
-(the `Jenkinsfile` has a setting for each):
+(the `Jenkinsfile` sets each of them):
 
-| Variable               | Default              | Meaning                                                           |
-|------------------------|----------------------|-------------------------------------------------------------------|
-| `ORGANIZER_PASSWORD`   | *(none)*             | Ask for this password on every page (any username works).         |
-| `ORGANIZER_PUBLIC_URL` | *(from the request)* | Address printed into QR labels, e.g. `http://organizer.lan:18420`. |
-| `ORGANIZER_AI`         | `on`                 | `off` hides "Fill in from photo".                                 |
+| Variable               | Default              | Meaning                                                                       |
+|------------------------|----------------------|-------------------------------------------------------------------------------|
+| `ORGANIZER_PASSWORD`   | *(none)*             | Ask for this password on every page (any username works).                     |
+| `ORGANIZER_PUBLIC_URL` | *(from the request)* | Address printed into QR labels, e.g. `http://organizer.lan:18420`.             |
+| `ORGANIZER_MACHINE_ID` | *(found by the app)* | This computer's ID, which the saved API key is tied to; needed in Docker (see [Filling in items with AI](#filling-in-items-with-ai)). |
+
+The Anthropic API key for *Fill in with AI* isn't an environment variable: it's entered on the
+**Settings** page (linked at the bottom of every page).
 
 ## Taking photos
 
@@ -135,30 +139,53 @@ On the item form, **Take photo** opens the camera:
   (`http://localhost:18420`) or through an HTTPS reverse proxy (see [Security](#security)), but not
   at an address like `http://192.168.1.20:18420`. Choosing a photo file works everywhere.
 
-## Filling in items from photos
+## Filling in items with AI
 
-On the item form, choose or take a photo and tap **Fill in from photo**. The app reads the text
-on the photo (bag labels from LCSC, Digi-Key, Mouser and similar, or the marking on a chip) and fills
-in what it finds: the name, quantity, tags such as `resistor` and `smd`, and properties like part
-number, manufacturer, resistance, capacitance, voltage, tolerance and package. It only fills empty
-fields and never saves anything by itself, so check the suggestions before saving. Once the model is
-downloaded, choosing a photo for a new item fills the form in automatically.
+With an Anthropic API key, the item form gets a **Fill in with AI** button. Claude (Anthropic's
+Claude Haiku 5.5) works out what the item is from what you give it:
 
-How it works:
+- **a photo**: it reads any label or packaging, such as bag labels from LCSC, Digi-Key and Mouser,
+  the marking on a chip, or the front of a box or bottle;
+- **a typed name**, such as `NE555P` or `Persil Universal Gel 1.5 L`: it fills in what it knows
+  about that exact item;
+- **both**: the name tells it what it's looking at, and the photo's label keeps it accurate.
 
-- The model is Microsoft's [Florence-2-base](https://huggingface.co/microsoft/Florence-2-base-ft)
-  (MIT licence), a small vision model good at reading text. It runs inside the app with
-  [ONNX Runtime](https://onnxruntime.ai), so there is nothing else to install and photos never leave
-  your computer.
-- The first time you use it, the app asks before downloading the model (about 550 MB, once) into
-  the `organizer-data` volume. The files are pinned to an exact version and checked against SHA-256 checksums.
-- Reading a photo took about 1–1.5 seconds on an M3 Max; expect longer on older or smaller machines
-  such as a Raspberry Pi. The model is loaded on first use, after which the app uses about 1.5 GB
-  of memory.
+It fills in the name, quantity, tags such as `resistor` and `smd` or `food` and `fruit`, properties
+like brand, size, part number, manufacturer, package and voltage, and a short note. It only fills
+empty fields and never saves anything by itself, so check the suggestions before saving. Choosing a
+photo for a new item that has no name yet fills the form in straight away.
 
-Tips: photograph the label straight on, close enough to fill most of the frame, in good light. Small
-models misread now and then, especially runs of the same digit (NE555P can come out as NE55P), so
-glance over part numbers.
+To set it up:
+
+1. Create an API key at [console.anthropic.com](https://console.anthropic.com/settings/keys) (the
+   account needs some credit). A Claude.ai subscription doesn't include API use.
+2. Open **Settings** (bottom of every page), paste the key and save. The app checks it with
+   Anthropic first.
+
+What it costs: Anthropic bills the account per use, about $0.0003 a photo and $0.0001 a typed name
+(100 photos cost about 3¢). An answer takes about 2 seconds.
+
+**Web search** is off by default. Switched on in Settings, Claude may look up details the photo or
+name doesn't give, such as a part's specifications. It searches only when it needs to; each search
+costs about 1¢ more and adds a few seconds.
+
+### How the API key is kept
+
+- It's checked with Anthropic, then stored in the database **encrypted** with AES-256-GCM. Pages
+  never show it again, only its last four characters, and it isn't written to the logs.
+- The encryption key is made from two parts: a random key file, `secret.key`, which the app creates
+  next to the database (readable only by the app's user), and **this computer's ID**. *Download
+  backup* and the update backups contain only the encrypted key, and a copy of the data, even with
+  `secret.key`, can't decrypt it on another computer. After restoring on another computer, or a
+  reinstall of the operating system, enter the key again in Settings.
+- The computer's ID is Windows' MachineGuid, macOS's hardware UUID or Linux's `/etc/machine-id`. A
+  Docker container can't see the computer it runs on, so there the ID is passed in as
+  `ORGANIZER_MACHINE_ID`: the `Jenkinsfile` does this with the Windows machine's MachineGuid. When you
+  run the container by hand, pass something unique to the computer, e.g. on Windows
+  `-e ORGANIZER_MACHINE_ID=<the MachineGuid from HKLM\SOFTWARE\Microsoft\Cryptography>`. Without it
+  the key is still encrypted, just not tied to the computer; Settings says so.
+- Anyone who can open the app can *use* the key, though not see it. Set `ORGANIZER_PASSWORD` if
+  others can reach the app.
 
 ## QR labels
 
@@ -176,8 +203,8 @@ pointing at something else.
 ## Your data
 
 Everything, photos included, is in one SQLite file, `organizer.db` in the `organizer-data` volume.
-The AI model in the volume's `models/` folder isn't part of your data; it can be deleted and
-downloaded again at any time.
+Next to it, `secret.key` encrypts the saved API key (see [How the API key is kept](#how-the-api-key-is-kept)).
+A `models/` folder left over from earlier versions, which ran an AI model inside the app, can be deleted.
 
 - **Backup:** use *Download backup* at the bottom of any page. It's safe to do while the app is
   in use. To restore, stop the app (`docker stop organizer`), then, in the folder
@@ -188,32 +215,16 @@ downloaded again at any time.
 
 ## Offline and private
 
-The app needs no internet connection and has no accounts, analytics or update checks. Pages load
-nothing from other sites (no CDNs or web fonts, and the browser is told to block anything that
-isn't from the app itself), and photos are read on your computer.
+The app has no accounts, analytics or update checks. Pages load nothing from other sites (no CDNs or
+web fonts, and the browser is told to block anything that isn't from the app itself).
 
-The internet is used only twice:
+The internet is used only for:
 
-- **Building** (`./gradlew buildFatJar` and `docker build`) downloads Gradle, the libraries and the
-  Java base image once. The built image doesn't need them.
-- **The AI model download**, which happens only when you agree to it, fetches the model from
-  Hugging Face once. If you don't use "Fill in from photo", set `ORGANIZER_AI=off` and the app
-  makes no outside connections at all.
-
-To set up the model on a machine without internet, download these five files from
-[the pinned version](https://huggingface.co/onnx-community/Florence-2-base-ft/tree/e88a44eaf3791a35eae0c5a47b3dbcd36e67eb6f)
-and put them, without their folders, in a folder named `florence-2-base-ft`:
-`tokenizer.json`, `onnx/vision_encoder.onnx`, `onnx/embed_tokens_quantized.onnx`,
-`onnx/encoder_model_quantized.onnx` and `onnx/decoder_model_merged_quantized.onnx`. Then, next to
-that folder, copy it into the volume and restart the app, which finds the files on startup:
-
-```sh
-docker run --rm -v organizer-data:/data -v "${PWD}:/import" --entrypoint sh organizer -c "mkdir -p /data/models && cp -R /import/florence-2-base-ft /data/models/"
-docker restart organizer
-```
-
-You can also copy the folder out of a machine where the app downloaded it, with
-`docker cp organizer:/data/models/florence-2-base-ft .`
+- **Building** (`./gradlew buildFatJar` and `docker build`), which downloads Gradle, the libraries and
+  the Java base image once. The built image doesn't need them.
+- **Fill in with AI**, once an API key is saved: the item's photo and typed name go to Anthropic's
+  API, when you press the button or choose a photo for a new item that has no name yet. Without a
+  key, the app makes no outside connections at all.
 
 ## Security
 
@@ -226,24 +237,22 @@ must pass the original `Host` header through for that check to work.
 ## Development
 
 ```sh
-./gradlew test   # unit tests plus HTTP tests against a temporary database
-
-# Also run the tests that need the real AI model, from a folder holding it (see above):
-./gradlew test -Dorganizer.test.models=path/to/florence-2-base-ft
+./gradlew test   # unit tests plus HTTP tests against a temporary database; Claude is replaced by a stand-in
 ```
 
 ```
 src/main/kotlin/organizer/
   Main.kt                    entry point and configuration
-  ai/                        photo reading: Florence-2 on ONNX Runtime, tokenizer, label parsing, model download
+  ai/                        Fill in with AI: the Claude client, the question and its answer, the saved key
   db/                        SQLite access and schema migrations
   model/                     data classes, location tree, search normalization, name ranges
-  store/                     repositories (all SQL lives here)
+  store/                     repositories (all SQL lives here), settings and their encryption
   web/                       Ktor setup, routes and HTML views (kotlinx.html)
 src/main/resources/static/   app.css, app.js (progressive enhancement, no build step)
 ```
 
-The rules that turn the text read from a photo into item fields are in `ai/ItemSuggestion.kt`, with
-examples in `ItemSuggestionTest`; that's the place to teach it a new label format.
+What Claude is asked about each photo or name, and how its answer becomes item fields, is in
+`ai/ItemSuggestion.kt`, with examples in `ItemSuggestionTest`; that's the place to change what it
+fills in.
 
 Schema changes go in `db/Migrations.kt` as a new entry; existing databases upgrade on startup.

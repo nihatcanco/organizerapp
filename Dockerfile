@@ -4,8 +4,8 @@
 #     docker build -t organizer .
 #     docker run -d --name organizer --restart unless-stopped -p 18420:18420 -v organizer-data:/data organizer
 #
-# The database and the AI model are kept in /data; mount a volume there so they survive updates.
-# Ubuntu-based rather than Alpine: ONNX Runtime's native library needs glibc.
+# The database, and the key that encrypts the saved API key, are kept in /data; mount a volume there so they
+# survive updates.
 FROM eclipse-temurin:21-jre-noble
 # The Jenkinsfile finds the images left over from earlier deploys by this label.
 LABEL org.opencontainers.image.title=organizer

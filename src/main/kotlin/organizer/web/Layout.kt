@@ -122,6 +122,7 @@ private fun HTML.page(title: String, search: SearchBox, content: FlowContent.() 
             div("container") {
                 a("/export/items.csv") { icon("download"); +"Export CSV" }
                 a("/export/backup") { icon("download"); +"Download backup" }
+                a("/settings") { icon("settings"); +"Settings" }
             }
         }
     }

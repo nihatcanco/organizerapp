@@ -2,120 +2,118 @@ package organizer.ai
 
 import organizer.model.Property
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
+import kotlin.test.assertFalse
 
 class ItemSuggestionTest {
-    private fun ItemSuggestion.property(name: String) = properties.firstOrNull { it.name == name }?.value
+    @Test
+    fun `reads the model's answer`() {
+        val suggestion = suggestItem(
+            """
+            {"name": "Resistor 10 kΩ", "quantity": 100, "tags": ["resistor", "smd"],
+             "properties": {"Part number": "0603WAF1002T5E", "Package": "0603", "LCSC part": "C25804"},
+             "notes": "10 kΩ ±1% 100 mW thick film chip resistor."}
+            """.trimIndent(),
+        )
+        assertEquals(
+            ItemSuggestion(
+                name = "Resistor 10 kΩ",
+                quantity = 100,
+                tags = listOf("resistor", "smd"),
+                properties = listOf(Property("Part number", "0603WAF1002T5E"), Property("Package", "0603"), Property("LCSC part", "C25804")),
+                notes = "10 kΩ ±1% 100 mW thick film chip resistor.",
+            ),
+            suggestion,
+        )
+    }
 
     @Test
-    fun `reads an LCSC bag label`() {
+    fun `finds the answer in a code block with words around it`() {
+        val suggestion = suggestItem("Here you go:\n```json\n{\"name\": \"Banana\", \"tags\": [\"food\", \"fruit\"]}\n```\nEnjoy!")
+        assertEquals("Banana", suggestion.name)
+        assertEquals(listOf("food", "fruit"), suggestion.tags)
+    }
+
+    @Test
+    fun `leaves out stand-ins and values the form can't take`() {
         val suggestion = suggestItem(
-            listOf(
-                "LCSC Part #: C25804",
-                "Mfr.Part #: 0603WAF1002T5E",
-                "Manufacturer: UNI-ROYAL(Uniroyal Elec)",
-                "Package: 0603",
-                "Description: 100mW Thick Film Resistors 75V ±1% ±100ppm/℃ 10kΩ 0603 Chip Resistor - Surface Mount ROHS",
-                "Qty: 100",
-                "Customer #: 12345",
-            ),
-            caption = "A white label on a plastic bag.",
+            """
+            {"name": "Detergent", "quantity": "unknown", "tags": ["Cleaning", "cleaning", "#Laundry", ""],
+             "properties": {"Brand": "N/A", "Volume": "1.5 L", "Scent": null, "Weight": 1.6, "notes": "1.5 L"},
+             "notes": "Detergent"}
+            """.trimIndent(),
         )
-        assertEquals("Resistor 10 kΩ", suggestion.name)
-        assertEquals(100, suggestion.quantity)
-        assertEquals(listOf("resistor", "smd"), suggestion.tags)
+        assertEquals(null, suggestion.quantity)
+        assertEquals(listOf("cleaning", "laundry"), suggestion.tags)
+        assertEquals(listOf(Property("Volume", "1.5 L"), Property("Weight", "1.6")), suggestion.properties)
+        assertEquals(null, suggestion.notes) // the same as the name
+        assertEquals(null, suggestItem("""{"quantity": 0}""").quantity)
+        assertEquals(100, suggestItem("""{"quantity": "100 PCS"}""").quantity)
+    }
+
+    @Test
+    fun `uses the app's names for keys copied from a label`() {
+        val suggestion = suggestItem(
+            """{"properties": {"LCSC Part #": "C25804", "Mfr.Part #": "0603WAF1002T5E", "Digi-Key Part Number:": "311-10.0KHRCT-ND", "MPN": "X", "Mfr.": "UNI-ROYAL", "Pkg": "0603"}}""",
+        )
         assertEquals(
             listOf(
-                Property("Part number", "0603WAF1002T5E"),
-                Property("Manufacturer", "UNI-ROYAL(Uniroyal Elec)"),
-                Property("Resistance", "10 kΩ"),
-                Property("Tolerance", "±1%"),
-                Property("Voltage", "75 V"),
-                Property("Power", "100 mW"),
-                Property("Package", "0603"),
                 Property("LCSC part", "C25804"),
+                Property("Part number", "0603WAF1002T5E"), // the first of two part numbers wins
+                Property("Digi-Key part", "311-10.0KHRCT-ND"),
+                Property("Manufacturer", "UNI-ROYAL"),
+                Property("Package", "0603"),
             ),
             suggestion.properties,
         )
-        assertEquals("100mW Thick Film Resistors 75V ±1% ±100ppm/℃ 10kΩ 0603 Chip Resistor - Surface Mount ROHS", suggestion.notes)
     }
 
     @Test
-    fun `reads a Digi-Key label without colons`() {
-        val suggestion = suggestItem(
-            listOf(
-                "DIGI-KEY PART NUMBER 311-10.0KHRCT-ND",
-                "MANUFACTURER PART NUMBER RC0603FR-0710KL",
-                "DESCRIPTION RES 10K OHM 1% 1/10W 0603",
-                "QUANTITY 100",
-                "CUST REF",
-            ),
-            caption = "",
-        )
-        assertEquals("Resistor 10 kΩ", suggestion.name)
-        assertEquals(100, suggestion.quantity)
-        assertEquals("RC0603FR-0710KL", suggestion.property("Part number"))
-        assertEquals("311-10.0KHRCT-ND", suggestion.property("Digi-Key part"))
-        assertEquals("1/10 W", suggestion.property("Power"))
-        assertEquals("±1%", suggestion.property("Tolerance"))
+    fun `drops remarks in brackets from property names`() {
+        val suggestion = suggestItem("""{"properties": {"Part number (the maker's)": "TPS63020DSJR", "LCSC part (C-number)": "C15483"}}""")
+        assertEquals(listOf(Property("Part number", "TPS63020DSJR"), Property("LCSC part", "C15483")), suggestion.properties)
     }
 
     @Test
-    fun `splits two fields printed on one line`() {
-        val suggestion = suggestItem(listOf("Mouser #: 603-RC0603FR-0710KL Qty: 50"), caption = "")
-        assertEquals("603-RC0603FR-0710KL", suggestion.property("Mouser part"))
-        assertEquals(50, suggestion.quantity)
+    fun `accepts properties written as a list`() {
+        val suggestion = suggestItem("""{"properties": [{"name": "Package", "value": "0603"}, {"name": "Color"}]}""")
+        assertEquals(listOf(Property("Package", "0603")), suggestion.properties)
     }
 
     @Test
-    fun `names capacitors by their value`() {
-        val suggestion = suggestItem(listOf("DESCRIPTION CAP CER 0.1UF 50V X7R 0603"), caption = "")
-        assertEquals("Capacitor 0.1 µF", suggestion.name)
-        assertEquals("50 V", suggestion.property("Voltage"))
-        assertEquals(listOf("capacitor", "smd"), suggestion.tags)
+    fun `an answer without JSON suggests nothing`() {
+        assertEquals(ItemSuggestion(null, null, emptyList(), emptyList(), null), suggestItem("I can't tell what this is."))
     }
 
     @Test
-    fun `uses the marking on a chip as its part number`() {
-        val suggestion = suggestItem(listOf("ATMEL", "ATMEGA328P", "AU 1824"), caption = "A close up of a black microchip on a table.")
-        assertEquals("ATMEGA328P", suggestion.name)
-        assertEquals(listOf("microcontroller"), suggestion.tags)
-        assertEquals("ATMEGA328P", suggestion.property("Part number"))
+    fun `asks about the photo, the typed name, or both`() {
+        val photo = itemQuestion(name = null, photo = true, webSearch = false)
+        assertContains(photo, "This photo shows something to add")
+        assertContains(photo, "- name: short, as written on a box.")
+        assertContains(photo, "Copy values exactly as printed.")
+
+        val name = itemQuestion(name = "NE555P", photo = false, webSearch = false)
+        assertContains(name, "Someone is adding \"NE555P\" to a home inventory")
+        assertContains(name, "- name: as given.")
+        assertContains(name, "never guess a value you aren't sure of")
+        assertFalse("photo" in name.lowercase())
+
+        val both = itemQuestion(name = "Resistor 10k", photo = true, webSearch = false)
+        assertContains(both, "This photo shows \"Resistor 10k\", something to add")
+        assertContains(both, "reading any label")
+        assertFalse("search" in both)
     }
 
     @Test
-    fun `understands a hand-labelled bag with help from the caption`() {
-        val suggestion = suggestItem(listOf("10K 0805", "100PCS"), caption = "A bag of resistors on a table.")
-        assertEquals("Resistor 10 kΩ", suggestion.name)
-        assertEquals(100, suggestion.quantity)
-        assertEquals(listOf("resistor", "smd"), suggestion.tags)
+    fun `a typed name can't break out of its quotes`() {
+        assertContains(itemQuestion(name = "12\" ruler", photo = false, webSearch = false), "adding \"12\\\" ruler\" to")
     }
 
     @Test
-    fun `repairs typical OCR slips`() {
-        val suggestion = suggestItem(
-            listOf(
-                "LCSC Part #: C2580A",
-                "DIGI-KEY PART NUMBER296-1395-5-ND",
-                "MANUFACTURER PART NUMBERNE555P",
-                "Description: 10KQ +1% 100mW thick Film Resistor",
-            ),
-            caption = "",
-        )
-        assertEquals("Resistor 10 kΩ", suggestion.name)
-        assertEquals("C25804", suggestion.property("LCSC part"))
-        assertEquals("296-1395-5-ND", suggestion.property("Digi-Key part"))
-        assertEquals("NE555P", suggestion.property("Part number"))
-        assertEquals("±1%", suggestion.property("Tolerance"))
-    }
-
-    @Test
-    fun `falls back to the caption's subject when there is no text`() {
-        val suggestion = suggestItem(emptyList(), caption = "A close up of a blue circuit board with a usb cable.")
-        assertEquals("Blue circuit board", suggestion.name)
-        assertEquals(emptyList(), suggestion.tags)
-        assertNull(suggestion.quantity)
-        assertEquals(emptyList(), suggestion.properties)
+    fun `may search the web when that's switched on`() {
+        val question = itemQuestion(name = "AMS1117-3.3", photo = false, webSearch = true)
+        assertContains(question, "You can search the web to identify the exact item and to check facts that the name doesn't say")
+        assertContains(question, "or that you found for this exact item")
     }
 }

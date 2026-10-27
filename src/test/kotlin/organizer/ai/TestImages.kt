@@ -5,12 +5,7 @@ import java.awt.Font
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
-import java.nio.file.Path
 import javax.imageio.ImageIO
-import kotlin.io.path.Path
-
-/** The model directory given with -Dorganizer.test.models, or null to skip tests that need the real model. */
-fun testModelDirectory(): Path? = System.getProperty("organizer.test.models")?.let { Path(it) }
 
 /** A photo-sized picture of a white component label with black print. */
 fun labelImage(vararg lines: String): BufferedImage {
