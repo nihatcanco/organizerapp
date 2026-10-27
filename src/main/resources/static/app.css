@@ -105,7 +105,7 @@ code {
 }
 
 .container { width: 100%; max-width: 980px; margin: 0 auto; padding: 0 16px; }
-main.container { padding-top: 20px; padding-bottom: 48px; }
+main.container { padding-top: 20px; padding-bottom: calc(48px + env(safe-area-inset-bottom)); }
 
 /* ---------- Top bar ---------- */
 
@@ -180,6 +180,11 @@ main.container { padding-top: 20px; padding-bottom: 48px; }
   .searchbar { grid-area: search; max-width: none; }
   .navlink { padding: 8px; }
   .navlink span { display: none; }
+}
+/* On the narrowest phones, Add item shows only its icon too, like .btn-compact. */
+@media (max-width: 380px) {
+  .topnav .btn { width: 40px; padding: 0; }
+  .topnav .btn > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 }
 
 /* ---------- Buttons ---------- */
@@ -266,10 +271,6 @@ section.card h2 { margin-bottom: 8px; }
 
 .danger-zone { margin-top: 36px; padding-top: 16px; border-top: 1px solid var(--border); }
 .danger-zone .hint { margin-top: 8px; }
-
-.site-footer { border-top: 1px solid var(--border); padding: 16px 0 calc(16px + env(safe-area-inset-bottom)); font-size: 0.875rem; }
-.site-footer .container { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 22px; }
-.site-footer a { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
 
 /* ---------- Home ---------- */
 
@@ -699,7 +700,7 @@ section.card .card-title h2 { margin: 0; }
 @media print {
   @page { margin: 10mm; }
   body { display: block; background: #fff; color: #000; }
-  .topbar, .site-footer, .no-print { display: none !important; }
+  .topbar, .no-print { display: none !important; }
   main.container { max-width: none; padding: 0; }
   .labels { grid-template-columns: repeat(auto-fill, var(--label-width)); gap: 3mm; margin: 0; }
   .label { border: 0.2mm dashed #999; }

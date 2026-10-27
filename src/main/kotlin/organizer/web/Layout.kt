@@ -15,7 +15,6 @@ import kotlinx.html.a
 import kotlinx.html.body
 import kotlinx.html.button
 import kotlinx.html.div
-import kotlinx.html.footer
 import kotlinx.html.form
 import kotlinx.html.h1
 import kotlinx.html.h2
@@ -112,6 +111,7 @@ private fun HTML.page(title: String, path: String, search: SearchBox, addItem: S
                 nav("topnav") {
                     navLink("/locations", "Locations", "folder", current = path.startsWith("/locations") || path == "/labels")
                     navLink("/tags", "Tags", "tag", current = path == "/tags")
+                    navLink("/settings", "Settings", "settings", current = path == "/settings")
                     a(addItem, classes = "btn btn-primary") {
                         icon("plus")
                         span { +"Add item" }
@@ -120,13 +120,6 @@ private fun HTML.page(title: String, path: String, search: SearchBox, addItem: S
             }
         }
         main("container") { content() }
-        footer("site-footer") {
-            div("container") {
-                a("/export/items.csv") { icon("download"); +"Export CSV" }
-                a("/export/backup") { icon("download"); +"Download backup" }
-                a("/settings") { icon("settings"); +"Settings" }
-            }
-        }
     }
 }
 
