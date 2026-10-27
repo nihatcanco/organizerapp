@@ -5,6 +5,7 @@ import io.ktor.http.Parameters
 import io.ktor.http.formUrlEncode
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.html.respondHtml
+import io.ktor.server.request.path
 import kotlinx.html.ButtonType
 import kotlinx.html.DIV
 import kotlinx.html.FlowContent
@@ -23,6 +24,7 @@ import kotlinx.html.header
 import kotlinx.html.hiddenInput
 import kotlinx.html.id
 import kotlinx.html.img
+import kotlinx.html.kbd
 import kotlinx.html.label
 import kotlinx.html.li
 import kotlinx.html.link
@@ -53,12 +55,14 @@ class SearchBox(
     val live: Boolean = false,
 )
 
+/** A page in the app's frame; [addItem] is where the header's "Add item" goes, such as a form already set to this location. */
 suspend fun ApplicationCall.respondPage(
     title: String,
     status: HttpStatusCode = HttpStatusCode.OK,
     search: SearchBox = SearchBox(),
+    addItem: String = "/items/new",
     content: FlowContent.() -> Unit,
-) = respondHtml(status) { page(title, search, content) }
+) = respondHtml(status) { page(title, request.path(), search, addItem, content) }
 
 suspend fun ApplicationCall.respondNotFound() = respondPage("Not found", HttpStatusCode.NotFound) {
     emptyState("Nothing here", "This page doesn't exist. It may have been deleted.") {
@@ -66,7 +70,7 @@ suspend fun ApplicationCall.respondNotFound() = respondPage("Not found", HttpSta
     }
 }
 
-private fun HTML.page(title: String, search: SearchBox, content: FlowContent.() -> Unit) {
+private fun HTML.page(title: String, path: String, search: SearchBox, addItem: String, content: FlowContent.() -> Unit) {
     attributes["lang"] = "en"
     head {
         meta(charset = "utf-8")
@@ -97,20 +101,18 @@ private fun HTML.page(title: String, search: SearchBox, content: FlowContent.() 
                         attributes["enterkeyhint"] = "search"
                         if (search.autofocus) autoFocus = true
                     }
+                    // app.js focuses the search box when / is pressed.
+                    kbd("search-key") {
+                        attributes["aria-hidden"] = "true"
+                        attributes["title"] = "Press / to search"
+                        +"/"
+                    }
                     for ((name, value) in search.hidden) hiddenInput(name = name) { this.value = value }
                 }
                 nav("topnav") {
-                    a("/locations", classes = "navlink") {
-                        attributes["aria-label"] = "Locations"
-                        icon("folder")
-                        span { +"Locations" }
-                    }
-                    a("/tags", classes = "navlink") {
-                        attributes["aria-label"] = "Tags"
-                        icon("tag")
-                        span { +"Tags" }
-                    }
-                    a("/items/new", classes = "btn btn-primary") {
+                    navLink("/locations", "Locations", "folder", current = path.startsWith("/locations") || path == "/labels")
+                    navLink("/tags", "Tags", "tag", current = path == "/tags")
+                    a(addItem, classes = "btn btn-primary") {
                         icon("plus")
                         span { +"Add item" }
                     }
@@ -128,6 +130,16 @@ private fun HTML.page(title: String, search: SearchBox, content: FlowContent.() 
     }
 }
 
+private fun FlowContent.navLink(href: String, label: String, icon: String, current: Boolean) {
+    a(href, classes = "navlink") {
+        attributes["aria-label"] = label
+        if (current) attributes["aria-current"] = "page"
+        icon(icon)
+        span { +label }
+    }
+}
+
+/** The page's title and buttons. Buttons with the btn-compact class show only their icon on phones. */
 fun FlowContent.pageHeader(title: String, actions: (DIV.() -> Unit)? = null) {
     div("page-header") {
         h1 { +title }
@@ -142,8 +154,8 @@ fun FlowContent.sectionHeader(title: String, actions: (DIV.() -> Unit)? = null) 
     }
 }
 
-/** "Locations › Workshop › Cabinet" — the chain of places down to [locationId]. */
-fun FlowContent.breadcrumbs(tree: LocationTree, locationId: Long?) {
+/** "Locations › Workshop › Cabinet" — the chain of places down to [locationId], then [last] (link to text) if given. */
+fun FlowContent.breadcrumbs(tree: LocationTree, locationId: Long?, last: Pair<String, String>? = null) {
     nav("breadcrumbs") {
         attributes["aria-label"] = "Breadcrumb"
         ol {
@@ -151,6 +163,7 @@ fun FlowContent.breadcrumbs(tree: LocationTree, locationId: Long?) {
             if (locationId != null) {
                 for (location in tree.path(locationId)) li { a("/locations/${location.id}") { +location.name } }
             }
+            if (last != null) li { a(last.first) { +last.second } }
         }
     }
 }
@@ -268,7 +281,13 @@ fun FlowContent.locationList(locations: List<Location>, tree: LocationTree, show
                         if (showPath && location.parentId != null) {
                             span("location-path") { +tree.pathName(location.parentId) }
                         }
-                        span("location-meta") { +locationSummary(tree, location.id) }
+                        span("location-meta") {
+                            // Each part stays on one line, so "2 sub-locations" never breaks at its hyphen.
+                            locationSummary(tree, location.id).forEachIndexed { index, part ->
+                                if (index > 0) +" · "
+                                span { +part }
+                            }
+                        }
                     }
                     icon("chevron")
                 }
@@ -277,11 +296,15 @@ fun FlowContent.locationList(locations: List<Location>, tree: LocationTree, show
     }
 }
 
-fun locationSummary(tree: LocationTree, id: Long): String {
-    val parts = mutableListOf(plural(tree.totalItemCount(id), "item"))
+/** "3 items", "12 sub-locations", both, or "Empty". */
+fun locationSummary(tree: LocationTree, id: Long): List<String> {
+    val items = tree.totalItemCount(id)
     val children = tree.children(id).size
-    if (children > 0) parts += plural(children, "sub-location")
-    return parts.joinToString(" · ")
+    return buildList {
+        if (items > 0) add(plural(items, "item"))
+        if (children > 0) add(plural(children, "sub-location"))
+        if (isEmpty()) add("Empty")
+    }
 }
 
 /** A labelled form field; [name] is also the input's id, and where its error message is looked up. */

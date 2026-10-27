@@ -116,6 +116,12 @@
   // ---------- Photos: shrink camera photos before uploading, and preview them ----------
 
   for (const input of document.querySelectorAll('input[data-photo-input]')) {
+    // The Choose photo button stands in for the browser's own file field, which can't be styled.
+    const choose = input.form.querySelector('[data-choose-photo]');
+    if (choose) {
+      input.classList.add('sr-only');
+      choose.hidden = false;
+    }
     input.addEventListener('change', () => {
       input.photoReady = preparePhoto(input).finally(() => input.dispatchEvent(new Event('photo-ready')));
     });
@@ -329,7 +335,7 @@
     const update = () => {
       button.disabled = !(photoInput.files.length || savedPhoto(button) || nameInput.value.trim());
     };
-    button.closest('.ai-reader').hidden = false;
+    button.closest('.ai-fill').hidden = false;
     update();
     button.addEventListener('click', () => fillWithAi(button));
     nameInput.addEventListener('input', update);
@@ -365,7 +371,7 @@
       if (photoInput.files.length) body.append('photo', photoInput.files[0]);
       else if (savedPhoto(button)) body.append('item', savedPhoto(button));
       const hasPhoto = body.has('photo') || body.has('item');
-      show(`Asking Claude about ${hasPhoto && name ? 'the photo and name' : hasPhoto ? 'the photo' : 'the name'}…`);
+      show(`Asking Claude about ${hasPhoto && name ? 'the photo and name' : hasPhoto ? 'the photo' : 'the name'}…`, 'ai-busy');
       const response = await fetch('/ai/fill', { method: 'POST', body, headers: { Accept: 'application/json' } });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error || `the server answered ${response.status}`);
@@ -386,22 +392,23 @@
     }
   }
 
-  /** Puts the suggestions into the form without overwriting anything already typed. */
+  /** Puts the suggestions into the form without overwriting anything already typed, and highlights what changed. */
   function fillItemForm(form, result) {
     const filled = [];
     const field = (name) => form.elements.namedItem(name);
     if (result.name && !field('name').value.trim()) {
-      field('name').value = result.name;
+      setFilled(field('name'), result.name);
       filled.push('the name');
     }
     if (result.quantity && ['', '1'].includes(field('quantity').value.trim())) {
-      field('quantity').value = result.quantity;
+      setFilled(field('quantity'), result.quantity);
       filled.push('the quantity');
     }
-    const tags = field('tags').value.split(',').map((tag) => tag.trim()).filter(Boolean);
-    const newTags = (result.tags || []).filter((tag) => !tags.some((existing) => existing.toLowerCase() === tag.toLowerCase()));
+    const tags = tagList(field('tags'));
+    const newTags = (result.tags || []).filter((tag) => !tags.some((existing) => sameTag(existing, tag)));
     if (newTags.length) {
-      field('tags').value = [...tags, ...newTags].join(', ');
+      setFilled(field('tags'), [...tags, ...newTags].join(', '));
+      syncTagChips(field('tags'));
       filled.push(count(newTags.length, 'tag'));
     }
     const rows = form.querySelector('[data-property-rows]');
@@ -414,35 +421,85 @@
         row = rows.lastElementChild.cloneNode(true);
         rows.append(row);
       }
-      row.querySelector('[name="property_name"]').value = property.name;
-      row.querySelector('[name="property_value"]').value = property.value;
+      setFilled(row.querySelector('[name="property_name"]'), property.name);
+      setFilled(row.querySelector('[name="property_value"]'), property.value);
       added += 1;
     }
     if (added) {
       filled.push(count(added, 'property', 'properties'));
-      const blank = rows.lastElementChild.cloneNode(true); // keep an empty row for typing more
-      for (const input of blank.querySelectorAll('input')) input.value = '';
-      rows.append(blank);
+      rows.append(blankRow(rows)); // keep an empty row for typing more
     }
     if (result.notes && !field('notes').value.trim()) {
-      field('notes').value = result.notes;
+      setFilled(field('notes'), result.notes);
       filled.push('notes');
     }
     return filled;
   }
 
+  /** Fills in a field and marks it, until it's edited, as filled in by Claude. */
+  function setFilled(input, value) {
+    input.value = value;
+    input.classList.add('ai-filled');
+    input.addEventListener('input', () => input.classList.remove('ai-filled'), { once: true });
+  }
+
+  /** An empty copy of the last property row. */
+  function blankRow(rows) {
+    const row = rows.lastElementChild.cloneNode(true);
+    for (const input of row.querySelectorAll('input')) {
+      input.value = '';
+      input.classList.remove('ai-filled');
+    }
+    return row;
+  }
+
   const count = (n, word, plural = `${word}s`) => `${n} ${n === 1 ? word : plural}`;
+
+  // ---------- Tag suggestions: pressing one adds its tag to the field, or takes it out again ----------
+
+  const tagList = (input) => input.value.split(',').map((tag) => tag.trim()).filter(Boolean);
+  const sameTag = (a, b) => a.toLowerCase() === b.toLowerCase();
+
+  function syncTagChips(input) {
+    const tags = tagList(input);
+    for (const chip of input.closest('.field').querySelectorAll('[data-toggle-tag]')) {
+      chip.setAttribute('aria-pressed', String(tags.some((tag) => sameTag(tag, chip.dataset.toggleTag))));
+    }
+  }
+
+  for (const input of document.querySelectorAll('input[name="tags"]')) {
+    syncTagChips(input);
+    input.addEventListener('input', () => syncTagChips(input));
+  }
+
+  // ---------- Settings that save as soon as they're changed ----------
+
+  for (const form of document.querySelectorAll('form[data-autosubmit]')) {
+    for (const button of form.querySelectorAll('[data-autosubmit-button]')) button.hidden = true;
+    form.addEventListener('change', () => (form.requestSubmit ? form.requestSubmit() : form.submit()));
+  }
+
+  // ---------- Press / to search ----------
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey || event.defaultPrevented) return;
+    if (event.target.closest && event.target.closest('input, textarea, select, [contenteditable]')) return;
+    const search = document.getElementById('q');
+    if (!search) return;
+    event.preventDefault();
+    search.focus();
+    search.select();
+  });
 
   // ---------- Small click helpers ----------
 
   document.addEventListener('click', (event) => {
-    const target = event.target.closest('[data-add-property], [data-remove-property], [data-add-tag], [data-remove-label], [data-print]');
+    const target = event.target.closest('[data-add-property], [data-remove-property], [data-toggle-tag], [data-remove-label], [data-print]');
     if (!target) return;
 
     if (target.matches('[data-add-property]')) {
       const rows = target.form.querySelector('[data-property-rows]');
-      const row = rows.lastElementChild.cloneNode(true);
-      for (const field of row.querySelectorAll('input')) field.value = '';
+      const row = blankRow(rows);
       rows.append(row);
       row.querySelector('input').focus();
     } else if (target.matches('[data-remove-property]')) {
@@ -452,13 +509,13 @@
       } else {
         for (const field of row.querySelectorAll('input')) field.value = '';
       }
-    } else if (target.matches('[data-add-tag]')) {
+    } else if (target.matches('[data-toggle-tag]')) {
       const input = target.closest('.field').querySelector('input[name="tags"]');
-      const tags = input.value.split(',').map((tag) => tag.trim()).filter(Boolean);
-      const tag = target.dataset.addTag;
-      if (!tags.some((existing) => existing.toLowerCase() === tag.toLowerCase())) tags.push(tag);
-      input.value = tags.join(', ');
-      target.classList.add('chip-active');
+      const tag = target.dataset.toggleTag;
+      const tags = tagList(input);
+      const kept = tags.filter((existing) => !sameTag(existing, tag));
+      input.value = (kept.length < tags.length ? kept : [...tags, tag]).join(', ');
+      syncTagChips(input);
     } else if (target.matches('[data-remove-label]')) {
       target.closest('.label').remove();
     } else if (target.matches('[data-print]')) {

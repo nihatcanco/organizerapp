@@ -44,7 +44,7 @@ fun Route.locationRoutes(app: Services) {
         call.respondPage("Locations") {
             pageHeader("Locations") {
                 a("/locations/new", classes = "btn btn-primary") { icon("folder-plus"); span { +"New location" } }
-                if (tree.size > 0) a("/labels", classes = "btn") { icon("qr"); span { +"Labels" } }
+                if (tree.size > 0) a("/labels", classes = "btn btn-compact") { icon("qr"); span { +"Labels" } }
             }
             if (tree.size == 0) {
                 emptyState("No locations yet", "Create a top-level place like “Workshop” or “Parts cabinet”, then add drawers inside it.") {
@@ -89,7 +89,9 @@ fun Route.locationRoutes(app: Services) {
             call.queryParam("deleted") == "location" -> "Location deleted. Anything that was in it is now here."
             else -> null
         }
-        call.respondPage(location.name) { locationPage(location, tree, items, call.request.uri, notice) }
+        call.respondPage(location.name, addItem = "/items/new?location=${location.id}") {
+            locationPage(location, tree, items, call.request.uri, notice)
+        }
     }
 
     get("/locations/{id}/edit") {
@@ -197,14 +199,14 @@ private suspend fun ApplicationCall.respondLocationForm(
 private fun FlowContent.locationPage(location: Location, tree: LocationTree, items: List<Item>, here: String, notice: String?) {
     breadcrumbs(tree, location.parentId)
     pageHeader(location.name) {
-        a("/locations/${location.id}/edit", classes = "btn") { icon("edit"); span { +"Edit" } }
+        a("/labels?location=${location.id}", classes = "btn btn-compact") { icon("qr"); span { +"Labels" } }
+        a("/locations/${location.id}/edit", classes = "btn btn-compact") { icon("edit"); span { +"Edit" } }
     }
     if (location.description.isNotBlank()) div("description") { linkified(location.description) }
     if (notice != null) notice(notice)
     div("toolbar") {
         a("/items/new?location=${location.id}", classes = "btn btn-primary") { icon("plus"); +"Add item" }
         a("/locations/new?parent=${location.id}", classes = "btn") { icon("folder-plus"); +"Add sub-location" }
-        a("/labels?location=${location.id}", classes = "btn") { icon("qr"); +"Labels" }
     }
     val children = tree.children(location.id)
     if (children.isNotEmpty()) {
