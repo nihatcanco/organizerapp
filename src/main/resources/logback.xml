@@ -5,8 +5,12 @@
         </encoder>
     </appender>
 
+    <!-- The latest lines, for the Logs page in Settings -->
+    <appender name="RECENT" class="organizer.RecentLogs"/>
+
     <root level="INFO">
         <appender-ref ref="STDOUT"/>
+        <appender-ref ref="RECENT"/>
     </root>
     <logger name="io.netty" level="WARN"/>
 </configuration>

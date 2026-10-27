@@ -330,7 +330,23 @@ class AppTest {
             })
         }) { sameOrigin() }
         assertFalse("\"photo\"" in withPhoto.bodyAsText())
+        assertFalse("photoNote" in withPhoto.bodyAsText())
         assertEquals(1, photos.searched.size)
+
+        // Without a photo, the form says why.
+        photos.photo = null
+        val blocked = client.submitFormWithBinaryData("/ai/fill", formData { append("name", "NE555P") }) { sameOrigin() }
+        assertContains(blocked.bodyAsText(), "\"photoNote\":\"Couldn't download a photo from ti.com, mouser.com; Settings › Logs says why.\"")
+        answer = """{"name": "NE555P", "photos": []}"""
+        val nowhere = client.submitFormWithBinaryData("/ai/fill", formData { append("name", "NE555P") }) { sameOrigin() }
+        assertContains(nowhere.bodyAsText(), "\"photoNote\":\"Claude found no page with a photo of this exact item.\"")
+        assertEquals(2, photos.searched.size)
+
+        // The Logs page shows where the photo was looked for.
+        val logs = client.get("/settings/logs").bodyAsText()
+        assertContains(logs, "Looking for a photo of NE555P at https://www.ti.com/product/NE555, https://www.mouser.com/ProductDetail/NE555P")
+        assertContains(logs, "Claude named no pages with a photo of NE555P")
+        assertFalse("Looking for a photo" in client.get("/settings/logs?show=problems").bodyAsText())
     }
 
     @Test

@@ -101,7 +101,7 @@ class ItemSuggestionTest {
         assertContains(name, "never guess a value you aren't sure of")
         assertContains(name, "to check facts that the name doesn't say and to find a photo of it")
         assertContains(name, "\"photos\": []")
-        assertContains(name, "- photos: up to three addresses from your search")
+        assertContains(name, "- photos: up to five addresses from your search of pages that show this exact item, best first, each from a different site")
 
         val both = itemQuestion(name = "Resistor 10k", photo = true)
         assertContains(both, "This photo shows \"Resistor 10k\", something to add")
@@ -117,9 +117,12 @@ class ItemSuggestionTest {
     @Test
     fun `reads the photo pages, keeping only web addresses`() {
         val suggestion = suggestItem(
-            """{"name": "NE555P", "photos": ["https://www.ti.com/product/NE555", "file:///etc/passwd", "javascript:alert(1)", "https://www.ti.com/product/NE555", "http://a.example/1.jpg", "https://b.example/", "https://c.example/"]}""",
+            """{"name": "NE555P", "photos": ["https://www.ti.com/product/NE555", "file:///etc/passwd", "javascript:alert(1)", "https://www.ti.com/product/NE555", "http://a.example/1.jpg", "https://b.example/", "https://c.example/", "https://d.example/", "https://e.example/"]}""",
         )
-        assertEquals(listOf("https://www.ti.com/product/NE555", "http://a.example/1.jpg", "https://b.example/"), suggestion.photoPages)
+        assertEquals(
+            listOf("https://www.ti.com/product/NE555", "http://a.example/1.jpg", "https://b.example/", "https://c.example/", "https://d.example/"),
+            suggestion.photoPages,
+        )
         assertEquals(emptyList(), suggestItem("""{"name": "NE555P", "photos": null}""").photoPages)
         assertEquals(emptyList(), suggestItem("""{"properties": {"photos": "https://a.example/"}}""").properties)
     }

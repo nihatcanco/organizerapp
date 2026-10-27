@@ -15,6 +15,7 @@ import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 import organizer.ai.AiException
 import organizer.ai.ItemSuggestion
+import java.net.URI
 import java.util.Base64
 
 /** The JSON endpoint behind the "Fill in with AI" button on the item form (see app.js). */
@@ -32,7 +33,7 @@ fun Route.aiRoutes(app: Services) {
             return@post call.respondError("Type a name or choose a photo first.", HttpStatusCode.BadRequest)
         }
         try {
-            call.respondJson(app.ai.fill(photo, name).toJson())
+            call.respondJson(app.ai.fill(photo, name).toJson(lookedForPhoto = photo == null))
         } catch (e: AiException) {
             call.respondError("${e.message}.", HttpStatusCode.BadGateway)
         }
@@ -45,7 +46,8 @@ private suspend fun ApplicationCall.respondJson(json: JsonObject, status: HttpSt
 private suspend fun ApplicationCall.respondError(message: String, status: HttpStatusCode) =
     respondJson(buildJsonObject { put("error", message) }, status)
 
-private fun ItemSuggestion.toJson() = buildJsonObject {
+/** With [lookedForPhoto], an item without a photo that didn't get one says why in "photoNote", for the status line. */
+private fun ItemSuggestion.toJson(lookedForPhoto: Boolean) = buildJsonObject {
     name?.let { put("name", it) }
     quantity?.let { put("quantity", it) }
     putJsonArray("tags") { tags.forEach { add(it) } }
@@ -65,5 +67,13 @@ private fun ItemSuggestion.toJson() = buildJsonObject {
             put("data", Base64.getEncoder().encodeToString(photo.bytes))
             put("source", photo.source)
         }
+    }
+    if (lookedForPhoto && photo == null) {
+        val sites = photoPages.mapNotNull { runCatching { URI(it).host?.removePrefix("www.") }.getOrNull() }.distinct()
+        put(
+            "photoNote",
+            if (sites.isEmpty()) "Claude found no page with a photo of this exact item."
+            else "Couldn't download a photo from ${sites.joinToString(", ")}; Settings › Logs says why.",
+        )
     }
 }

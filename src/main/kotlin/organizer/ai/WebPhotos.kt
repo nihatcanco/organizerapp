@@ -63,29 +63,47 @@ class WebPhotos(private val allowed: (InetAddress) -> Boolean = ::isPublicAddres
 
     private class Found(val photo: WebPhoto, val plainBackground: Boolean)
 
+    /** Why there's no photo at an address, for the log. */
+    private class NoPhoto(reason: String) : IOException(reason)
+
     /** Looks at all [urls] at once and takes the first photo on a white or transparent background, otherwise the first found. */
     override suspend fun find(urls: List<String>): WebPhoto? = withContext(Dispatchers.IO) {
         val found = urls.map { url -> async { photoAt(url) } }.awaitAll().filterNotNull()
         val best = found.firstOrNull { it.plainBackground } ?: found.firstOrNull()
         if (best != null) {
             log.info("Took a photo from {} ({} KB, {} background)", best.photo.source, best.photo.bytes.size / 1024, if (best.plainBackground) "plain" else "busy")
+        } else {
+            log.info("No photo at any of the {} pages", urls.size)
         }
         best?.photo
     }
 
     /** The photo at [url]: the image itself, or the product photo of the page there. */
     private fun photoAt(url: String): Found? = try {
-        val start = url.toHttpUrlOrNull()
-        when (val download = start?.let(::download)) {
+        val start = url.toHttpUrlOrNull() ?: throw NoPhoto("not a web address")
+        when (val download = download(start)) {
             is Download.Image -> check(download.bytes, url)
-            is Download.Page -> pageImages(download.html, download.url).take(3).firstNotNullOfOrNull { image ->
-                (download(image) as? Download.Image)?.let { check(it.bytes, url) }
-            }
-            null -> null
+            is Download.Page -> photoOnPage(download, url)
         }
     } catch (e: IOException) {
-        log.info("Couldn't get a photo from {}: {}", url, e.message)
+        log.info("No photo from {}: {}", url, e.message)
         null
+    }
+
+    /** The first of the [page]'s product photos that can be downloaded. */
+    private fun photoOnPage(page: Download.Page, source: String): Found {
+        val images = pageImages(page.html, page.url).take(3)
+        if (images.isEmpty()) throw NoPhoto("the page names no product photo")
+        var failure: IOException? = null
+        for (image in images) {
+            try {
+                val download = download(image) as? Download.Image ?: throw NoPhoto("it's a page, not an image")
+                return check(download.bytes, source)
+            } catch (e: IOException) {
+                failure = NoPhoto("its photo $image: ${e.message}")
+            }
+        }
+        throw failure!!
     }
 
     private sealed interface Download {
@@ -93,7 +111,7 @@ class WebPhotos(private val allowed: (InetAddress) -> Boolean = ::isPublicAddres
         class Page(val html: String, val url: HttpUrl) : Download
     }
 
-    private fun download(url: HttpUrl): Download? {
+    private fun download(url: HttpUrl): Download {
         val request = Request.Builder().url(url)
             .header("User-Agent", USER_AGENT)
             // Image servers that can choose prefer formats Java can read, so the background can be checked.
@@ -101,25 +119,27 @@ class WebPhotos(private val allowed: (InetAddress) -> Boolean = ::isPublicAddres
             .build()
         client.newCall(request).execute().use { response ->
             val body = response.body
-            if (!response.isSuccessful || body == null) throw IOException("the server answered ${response.code}")
+            // Sites that keep automated downloads out answer 403.
+            if (!response.isSuccessful || body == null) throw NoPhoto("the site answered ${response.code}")
             val type = body.contentType()
             return when {
-                type?.type == "image" -> body.limited(MAX_PHOTO_BYTES, truncate = false)?.let { Download.Image(it) }
-                type?.subtype == "html" -> body.limited(MAX_PAGE_BYTES, truncate = true)
-                    ?.let { Download.Page(String(it, type.charset() ?: Charsets.UTF_8), response.request.url) }
-                else -> null
+                type?.type == "image" -> Download.Image(body.limited(MAX_PHOTO_BYTES, truncate = false) ?: throw NoPhoto("the image is over 8 MB"))
+                type?.subtype in setOf("html", "xhtml+xml") ->
+                    Download.Page(String(body.limited(MAX_PAGE_BYTES, truncate = true)!!, type?.charset() ?: Charsets.UTF_8), response.request.url)
+                else -> throw NoPhoto("it's ${type ?: "of no type"}, not a page or an image")
             }
         }
     }
 
     /** The photo in [bytes] if it is one, big enough not to be an icon or a logo. */
-    private fun check(bytes: ByteArray, source: String): Found? {
-        val type = photoType(bytes) ?: return null
+    private fun check(bytes: ByteArray, source: String): Found {
+        val type = photoType(bytes) ?: throw NoPhoto("not a JPEG, PNG, WebP or GIF image")
         val image = runCatching { ImageIO.read(ByteArrayInputStream(bytes)) }.getOrNull()
         return when {
             // Java can't read WebP, so its size and background stay unknown.
-            image == null -> if (bytes.size >= MIN_UNREADABLE_BYTES) Found(WebPhoto(type, bytes, source), plainBackground = false) else null
-            min(image.width, image.height) < MIN_SIDE -> null
+            image == null && bytes.size < MIN_UNREADABLE_BYTES -> throw NoPhoto("the image is too small to be a photo")
+            image == null -> Found(WebPhoto(type, bytes, source), plainBackground = false)
+            min(image.width, image.height) < MIN_SIDE -> throw NoPhoto("the image is only ${image.width}×${image.height}, an icon or a logo")
             else -> Found(WebPhoto(type, bytes, source), plainBorder(image) >= PLAIN)
         }
     }
