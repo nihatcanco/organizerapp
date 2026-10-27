@@ -27,15 +27,18 @@ import org.slf4j.LoggerFactory
 import organizer.ai.Ai
 import organizer.ai.AnthropicClaude
 import organizer.ai.Claude
+import organizer.ai.PhotoFinder
+import organizer.ai.WebPhotos
 import organizer.db.Database
 import organizer.store.ItemRepository
 import organizer.store.LocationRepository
 import organizer.store.SecretBox
 import organizer.store.SettingsRepository
+import organizer.store.UsageRepository
 import organizer.store.findMachineId
 import java.security.MessageDigest
 
-class Services(val config: AppConfig, val database: Database, connect: (apiKey: String) -> Claude) {
+class Services(val config: AppConfig, val database: Database, connect: (apiKey: String) -> Claude, photos: PhotoFinder) {
     val locations = LocationRepository(database)
     val items = ItemRepository(database)
     val ai: Ai
@@ -48,16 +51,22 @@ class Services(val config: AppConfig, val database: Database, connect: (apiKey: 
                 "No machine ID found, so a saved API key isn't tied to this computer. In Docker, set ORGANIZER_MACHINE_ID (see README.md).",
             )
         }
-        ai = Ai(SettingsRepository(database), SecretBox(database.path.resolveSibling("secret.key"), machineId), connect)
+        val secrets = SecretBox(database.path.resolveSibling("secret.key"), machineId)
+        ai = Ai(SettingsRepository(database), secrets, UsageRepository(database), connect, photos)
     }
 }
 
 private const val CONTENT_SECURITY_POLICY =
     "default-src 'self'; img-src 'self' data: blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
 
-/** The app; [connect] makes the client that talks to Claude, which tests replace. */
-fun Application.organizer(config: AppConfig, database: Database, connect: (apiKey: String) -> Claude = ::AnthropicClaude) {
-    val app = Services(config, database, connect)
+/** The app; [connect] makes the client that talks to Claude and [photos] downloads item photos, which tests replace. */
+fun Application.organizer(
+    config: AppConfig,
+    database: Database,
+    photos: PhotoFinder = WebPhotos(),
+    connect: (apiKey: String) -> Claude = ::AnthropicClaude,
+) {
+    val app = Services(config, database, connect, photos)
     monitor.subscribe(ApplicationStopped) { app.ai.close() }
 
     install(DefaultHeaders) {

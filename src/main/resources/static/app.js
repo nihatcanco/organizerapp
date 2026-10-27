@@ -341,9 +341,12 @@
     nameInput.addEventListener('input', update);
     form.elements.namedItem('remove_photo')?.addEventListener('change', update);
     photoInput.addEventListener('photo-ready', () => {
+      const fromAi = photoInput.fromAi;
+      photoInput.fromAi = false;
+      form.querySelector('.photo-tile').classList.toggle('ai-filled', Boolean(fromAi));
       update();
-      // A new item's photo is read straight away, unless a name was typed first.
-      if (photoInput.files.length && !nameInput.value.trim()) fillWithAi(button);
+      // A new item's photo is read straight away, unless a name was typed first or Claude found it.
+      if (photoInput.files.length && !nameInput.value.trim() && !fromAi) fillWithAi(button);
     });
   }
 
@@ -376,8 +379,8 @@
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error || `the server answered ${response.status}`);
 
-      const found = result.name || result.quantity || result.notes || (result.tags || []).length || (result.properties || []).length;
-      const filled = fillItemForm(form, result);
+      const found = result.name || result.quantity || result.notes || result.photo || (result.tags || []).length || (result.properties || []).length;
+      const filled = fillItemForm(form, result, !photoInput.files.length && !savedPhoto(button));
       if (filled.length) {
         show(`Filled in ${filled.join(', ')}. Please check before saving.`, 'ai-ok');
       } else if (found) {
@@ -392,10 +395,20 @@
     }
   }
 
-  /** Puts the suggestions into the form without overwriting anything already typed, and highlights what changed. */
-  function fillItemForm(form, result) {
+  /**
+   * Puts the suggestions into the form without overwriting anything already typed, and highlights what changed.
+   * A photo Claude found goes in only when the item has none ([noPhoto]).
+   */
+  function fillItemForm(form, result, noPhoto) {
     const filled = [];
     const field = (name) => form.elements.namedItem(name);
+    if (result.photo && noPhoto) {
+      const photoInput = form.querySelector('input[data-photo-input]');
+      const bytes = Uint8Array.from(atob(result.photo.data), (char) => char.charCodeAt(0));
+      photoInput.fromAi = true;
+      usePhoto(photoInput, new File([bytes], 'photo', { type: result.photo.type }));
+      filled.push(`a photo from ${new URL(result.photo.source).hostname.replace(/^www\./, '')}`);
+    }
     if (result.name && !field('name').value.trim()) {
       setFilled(field('name'), result.name);
       filled.push('the name');
@@ -470,13 +483,6 @@
   for (const input of document.querySelectorAll('input[name="tags"]')) {
     syncTagChips(input);
     input.addEventListener('input', () => syncTagChips(input));
-  }
-
-  // ---------- Settings that save as soon as they're changed ----------
-
-  for (const form of document.querySelectorAll('form[data-autosubmit]')) {
-    for (const button of form.querySelectorAll('[data-autosubmit-button]')) button.hidden = true;
-    form.addEventListener('change', () => (form.requestSubmit ? form.requestSubmit() : form.submit()));
   }
 
   // ---------- Press / to search ----------

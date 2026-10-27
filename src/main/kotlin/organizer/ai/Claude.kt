@@ -17,6 +17,7 @@ import com.anthropic.models.messages.MessageCreateParams
 import com.anthropic.models.messages.StopReason
 import com.anthropic.models.messages.ThinkingConfigDisabled
 import com.anthropic.models.messages.WebSearchTool20250305
+import organizer.model.AiUsage
 import org.slf4j.LoggerFactory
 import java.awt.Color
 import java.awt.RenderingHints
@@ -34,9 +35,15 @@ interface Claude : AutoCloseable {
     /** Checks that the API key works, which costs nothing. Throws [AiException] when it doesn't. */
     fun check()
 
-    /** Claude's answer to [question] about [image], if there is one. Throws [AiException] when there's no answer. */
-    fun ask(question: String, image: ClaudeImage?, webSearch: Boolean): String
+    /**
+     * Claude's answer to [question] about [image], if there is one; Claude may search the web for it.
+     * Throws [AiException] when there's no answer.
+     */
+    fun ask(question: String, image: ClaudeImage?): Answer
 }
+
+/** Claude's [text], unless it [refused] to answer; [usage] is what the question used either way. */
+class Answer(val text: String, val usage: AiUsage, val refused: Boolean = false)
 
 /** Why Claude couldn't help, in words for the page. */
 class AiException(message: String, cause: Throwable? = null) : RuntimeException(message, cause)
@@ -99,7 +106,7 @@ class AnthropicClaude(apiKey: String) : Claude {
         call { client.models().retrieve(MODEL) }
     }
 
-    override fun ask(question: String, image: ClaudeImage?, webSearch: Boolean): String {
+    override fun ask(question: String, image: ClaudeImage?): Answer {
         val started = System.nanoTime()
         val content = listOfNotNull(
             image?.let {
@@ -114,27 +121,41 @@ class AnthropicClaude(apiKey: String) : Claude {
             .maxTokens(2000)
             .thinking(ThinkingConfigDisabled.builder().build())
             .addUserMessageOfContentBlockParams(content)
-            .apply { if (webSearch) addTool(WebSearchTool20250305.builder().maxUses(MAX_SEARCHES).build()) }
+            .addTool(WebSearchTool20250305.builder().maxUses(MAX_SEARCHES).build())
         var inputTokens = 0L
         var outputTokens = 0L
         var searches = 0L
+        var dollars = 0.0
         var response: Message
         var turns = 0
         while (true) {
             response = call { client.messages().create(params.build()) }
-            inputTokens += response.usage().inputTokens()
-            outputTokens += response.usage().outputTokens()
-            searches += response.usage().serverToolUse().map { it.webSearchRequests() }.orElse(0L)
+            val usage = response.usage()
+            val responseSearches = usage.serverToolUse().map { it.webSearchRequests() }.orElse(0L)
+            inputTokens += usage.inputTokens()
+            outputTokens += usage.outputTokens()
+            searches += responseSearches
+            dollars += price(usage.inputTokens(), usage.outputTokens(), responseSearches)
             // A long web search can pause the answer; sending it back lets Claude carry on where it stopped.
             if (response.stopReason().orElse(null) != StopReason.PAUSE_TURN || ++turns >= MAX_CONTINUATIONS) break
             params.addMessage(response)
         }
         log.info(
-            "Asked {} in {} s: {} input and {} output tokens, {} web searches",
-            MODEL, "%.1f".format((System.nanoTime() - started) / 1e9), inputTokens, outputTokens, searches,
+            "Asked {} in {} s: {} input and {} output tokens, {} web searches, \${}",
+            MODEL, "%.1f".format((System.nanoTime() - started) / 1e9), inputTokens, outputTokens, searches, "%.4f".format(dollars),
         )
-        if (response.stopReason().orElse(null) == StopReason.REFUSAL) throw AiException("Claude declined to describe this item")
-        return response.content().mapNotNull { block -> block.text().map { it.text() }.orElse(null) }.joinToString("")
+        return Answer(
+            text = response.content().mapNotNull { block -> block.text().map { it.text() }.orElse(null) }.joinToString(""),
+            usage = AiUsage(inputTokens, outputTokens, searches, dollars),
+            refused = response.stopReason().orElse(null) == StopReason.REFUSAL,
+        )
+    }
+
+    /** Anthropic's list price of one response in US dollars. A prompt over 100K tokens is priced higher as a whole. */
+    private fun price(inputTokens: Long, outputTokens: Long, searches: Long): Double {
+        val long = inputTokens > LONG_PROMPT_TOKENS
+        val perMillion = inputTokens * (if (long) LONG_INPUT_PRICE else INPUT_PRICE) + outputTokens * (if (long) LONG_OUTPUT_PRICE else OUTPUT_PRICE)
+        return perMillion / 1_000_000 + searches * SEARCH_PRICE
     }
 
     /** Runs [request], turning Anthropic's errors into messages for the page. */
@@ -167,6 +188,14 @@ class AnthropicClaude(apiKey: String) : Claude {
         const val MODEL = "claude-haiku-5-5"
         const val MODEL_NAME = "Claude Haiku 5.5"
         private const val MAX_SEARCHES = 3L
+
+        // US dollars per million tokens, and per web search, from Anthropic's price list.
+        private const val INPUT_PRICE = 0.10
+        private const val OUTPUT_PRICE = 0.50
+        private const val LONG_PROMPT_TOKENS = 100_000
+        private const val LONG_INPUT_PRICE = 0.50
+        private const val LONG_OUTPUT_PRICE = 2.50
+        private const val SEARCH_PRICE = 0.01
         private const val MAX_CONTINUATIONS = 3
     }
 }

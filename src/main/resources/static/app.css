@@ -596,6 +596,7 @@ input[data-photo-input]:focus-visible + [data-choose-photo] { outline: 2px solid
 .ai-status.ai-error { background: var(--danger-soft); color: var(--danger); }
 /* Fields Claude just filled in, until they're edited */
 input.ai-filled, textarea.ai-filled { border-color: var(--accent); background: var(--accent-soft); }
+.photo-tile.ai-filled, .photo-tile.ai-filled:has(img:not([hidden])) { border: 2px solid var(--accent); }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .ai-status.ai-busy::before { animation-duration: 2.5s; } }
 
@@ -634,37 +635,8 @@ section.card .card-title h2 { margin: 0; }
   .input-row { flex-direction: column; }
   .input-row .btn { align-self: flex-start; }
 }
-.setting { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin: 20px 0 0; padding-top: 16px; border-top: 1px solid var(--border); }
-.setting > .hint { margin: 0 0 0 52px; }
-.switch { position: relative; display: flex; align-items: flex-start; gap: 12px; cursor: pointer; }
-.switch input { position: absolute; width: 1px; height: 1px; opacity: 0; }
-.switch-track {
-  position: relative;
-  width: 40px;
-  height: 24px;
-  flex: none;
-  margin-top: 1px;
-  border-radius: 999px;
-  background: var(--border-strong);
-  transition: background-color 0.15s ease;
-}
-.switch-track::after {
-  content: "";
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 1px 2px rgb(0 0 0 / 30%);
-  transition: transform 0.15s ease;
-}
-.switch input:checked + .switch-track { background: var(--accent); }
-.switch input:checked + .switch-track::after { transform: translateX(16px); }
-.switch input:focus-visible + .switch-track { outline: 2px solid var(--focus); outline-offset: 2px; }
-.switch-text { display: flex; flex-direction: column; }
-.switch-text span { color: var(--muted); font-size: 0.9rem; }
+.ai-facts { margin: 14px 0; }
+.ai-facts .hint { display: block; margin: 2px 0 0; }
 .fine-print { display: grid; gap: 6px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); }
 .fine-print .hint { margin: 0; }
 

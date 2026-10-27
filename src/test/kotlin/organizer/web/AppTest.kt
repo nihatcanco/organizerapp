@@ -17,17 +17,24 @@ import io.ktor.http.parameters
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
 import organizer.AppConfig
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import organizer.ai.FakeClaude
+import organizer.ai.FakePhotos
 import organizer.ai.SAMPLE_LABEL
+import organizer.ai.WebPhoto
 import organizer.ai.labelImage
 import organizer.ai.toPng
 import organizer.db.Database
 import organizer.db.query
 import java.sql.DriverManager
+import java.util.Base64
 import kotlin.io.path.createTempDirectory
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertContains
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
@@ -41,12 +48,17 @@ class AppTest {
         dir.toFile().deleteRecursively()
     }
 
-    // What the stand-in for Claude was asked.
+    // What the stand-in for Claude was asked, and what it answers.
     private val asked = mutableListOf<FakeClaude.Question>()
+    private var answer = """{"name": "Resistor 10 kΩ", "quantity": 100, "tags": ["resistor"], "properties": {"Package": "0603"}}"""
+
+    // The photo that the stand-in for the web has at every page.
+    private val webPhoto = WebPhoto("image/png", labelImage("NE555P").toPng(), "https://www.ti.com/product/NE555")
+    private val photos = FakePhotos(webPhoto)
 
     private fun ApplicationTestBuilder.client(config: AppConfig = AppConfig(machineId = "test-machine")): HttpClient {
         val database = Database.open(dir.resolve("test.db"))
-        application { organizer(config, database) { key -> FakeClaude(key, asked) } }
+        application { organizer(config, database, photos) { key -> FakeClaude(key, asked) { answer } } }
         return createClient { followRedirects = false }
     }
 
@@ -290,7 +302,6 @@ class AppTest {
         }) { sameOrigin() }
         assertNotNull(asked.last().image)
         assertContains(asked.last().text, "This photo shows \"Resistor 10k\"")
-        assertFalse(asked.last().webSearch)
 
         val nothing = client.submitFormWithBinaryData("/ai/fill", formData { append("name", " ") }) { sameOrigin() }
         assertEquals(HttpStatusCode.BadRequest, nothing.status)
@@ -298,16 +309,44 @@ class AppTest {
     }
 
     @Test
-    fun `web search is switched on in Settings`() = testApplication {
+    fun `finds a photo for an item added by name`() = testApplication {
         val client = client()
         client.saveApiKey("sk-ant-good-0123456789abcdefghij")
-        val webSearchBox = Regex("""<input[^>]*name="web_search"[^>]*>""")
-        assertFalse("checked" in webSearchBox.find(client.get("/settings").bodyAsText())!!.value)
-        client.submitForm("/settings/web-search", parameters { append("web_search", "on") }) { sameOrigin() }
-        assertContains(webSearchBox.find(client.get("/settings").bodyAsText())!!.value, "checked")
-        client.submitFormWithBinaryData("/ai/fill", formData { append("name", "AMS1117-3.3") }) { sameOrigin() }
-        assertTrue(asked.last().webSearch)
-        assertContains(asked.last().text, "You can search the web")
+        answer = """{"name": "NE555P", "photos": ["https://www.ti.com/product/NE555", "https://www.mouser.com/ProductDetail/NE555P"]}"""
+
+        val fill = client.submitFormWithBinaryData("/ai/fill", formData { append("name", "NE555P") }) { sameOrigin() }
+        val photo = Json.parseToJsonElement(fill.bodyAsText()).jsonObject["photo"]!!.jsonObject
+        assertEquals("image/png", photo["type"]!!.jsonPrimitive.content)
+        assertContentEquals(webPhoto.bytes, Base64.getDecoder().decode(photo["data"]!!.jsonPrimitive.content))
+        assertEquals("https://www.ti.com/product/NE555", photo["source"]!!.jsonPrimitive.content)
+        assertEquals(listOf(listOf("https://www.ti.com/product/NE555", "https://www.mouser.com/ProductDetail/NE555P")), photos.searched)
+
+        // An item with a photo keeps it, so none is looked for.
+        val withPhoto = client.submitFormWithBinaryData("/ai/fill", formData {
+            append("name", "NE555P")
+            append("photo", labelImage(*SAMPLE_LABEL).toPng(), Headers.build {
+                append(HttpHeaders.ContentType, "image/png")
+                append(HttpHeaders.ContentDisposition, "filename=\"label.png\"")
+            })
+        }) { sameOrigin() }
+        assertFalse("\"photo\"" in withPhoto.bodyAsText())
+        assertEquals(1, photos.searched.size)
+    }
+
+    @Test
+    fun `Settings names the model and adds up what AI has cost`() = testApplication {
+        val client = client()
+        client.saveApiKey("sk-ant-good-0123456789abcdefghij")
+        val before = client.get("/settings").bodyAsText()
+        assertContains(before, "Claude Haiku 5.5 with web search")
+        assertContains(before, "<code>claude-haiku-5-5</code>")
+        assertContains(before, "Nothing yet")
+        assertFalse("web_search" in before)
+
+        repeat(2) { client.submitFormWithBinaryData("/ai/fill", formData { append("name", "NE555P") }) { sameOrigin() } }
+        val after = client.get("/settings").bodyAsText()
+        assertContains(after, "$0.0255 this month, $0.0255 in total")
+        assertContains(after, "2 questions and 2 web searches since")
     }
 
     @Test

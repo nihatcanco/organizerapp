@@ -76,4 +76,20 @@ internal val MIGRATIONS: List<List<String>> = listOf(
         ) WITHOUT ROWID
         """,
     ),
+    listOf(
+        // Web search had a switch in Settings; Claude now always may search.
+        "DELETE FROM settings WHERE name = 'ai_web_search'",
+        // One row per question to Claude, for what AI has cost so far (see Settings).
+        """
+        CREATE TABLE ai_requests (
+            id            INTEGER PRIMARY KEY,
+            at            INTEGER NOT NULL,
+            model         TEXT    NOT NULL,
+            input_tokens  INTEGER NOT NULL,
+            output_tokens INTEGER NOT NULL,
+            web_searches  INTEGER NOT NULL,
+            cost          REAL    NOT NULL
+        )
+        """,
+    ),
 )
