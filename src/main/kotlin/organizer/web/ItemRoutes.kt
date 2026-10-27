@@ -42,13 +42,8 @@ import kotlinx.html.option
 import kotlinx.html.p
 import kotlinx.html.section
 import kotlinx.html.span
-import kotlinx.html.table
-import kotlinx.html.tbody
-import kotlinx.html.td
 import kotlinx.html.textArea
 import kotlinx.html.textInput
-import kotlinx.html.th
-import kotlinx.html.tr
 import kotlinx.html.video
 import organizer.model.Item
 import organizer.model.ItemDraft
@@ -262,6 +257,7 @@ private suspend fun ApplicationCall.respondItemForm(
     }
     respondPage(title, status) {
         if (added != null) notice("Added “${added.name}”.", "/items/${added.id}" to "View")
+        if (item != null) breadcrumbs(tree, item.locationId, "/items/${item.id}" to item.name)
         pageHeader(title)
         form(
             if (item == null) "/items" else "/items/${item.id}",
@@ -276,6 +272,8 @@ private suspend fun ApplicationCall.respondItemForm(
                     +"Please check the highlighted fields."
                 }
             }
+            // The photo comes first: with AI, a photo is often all that's needed to fill in the rest.
+            photoField(item, form, errors)
             field("Name", "name", errors) {
                 textInput(name = "name") {
                     id = "name"
@@ -287,6 +285,15 @@ private suspend fun ApplicationCall.respondItemForm(
                     attributes["autocomplete"] = "off"
                 }
             }
+            if (ai) {
+                aiFill(item)
+            } else {
+                p("hint ai-off") {
+                    +"To fill in items from a photo or name with AI, add an Anthropic API key in "
+                    a("/settings") { +"Settings" }
+                    +"."
+                }
+            }
             div("field-row") {
                 field("Quantity", "quantity", errors) {
                     numberInput(name = "quantity") {
@@ -296,7 +303,7 @@ private suspend fun ApplicationCall.respondItemForm(
                         attributes["inputmode"] = "numeric"
                     }
                 }
-                field("Warn when at or below", "min_quantity", errors, hint = "Optional low-stock alert") {
+                field("Running low at", "min_quantity", errors, hint = "Optional") {
                     numberInput(name = "min_quantity") {
                         id = "min_quantity"
                         value = form.minQuantity
@@ -317,10 +324,12 @@ private suspend fun ApplicationCall.respondItemForm(
                     attributes["autocapitalize"] = "none"
                 }
                 if (tagSuggestions.isNotEmpty()) {
+                    // app.js keeps them in step with the field: pressing one adds its tag, or takes it out again.
                     div("chips suggestions") {
                         for (tag in tagSuggestions) {
                             button(type = ButtonType.button, classes = "chip chip-button") {
-                                attributes["data-add-tag"] = tag
+                                attributes["data-toggle-tag"] = tag
+                                attributes["aria-pressed"] = "false"
                                 +tag
                             }
                         }
@@ -345,73 +354,6 @@ private suspend fun ApplicationCall.respondItemForm(
                 }
                 errors["properties"]?.let { p("field-error") { +it } }
             }
-            field("Photo", "photo", errors) {
-                if (item?.photoVersion != null) {
-                    div("current-photo") {
-                        img(alt = "Current photo", src = thumbUrl(item), classes = "thumb-lg")
-                        label("checkbox") {
-                            checkBoxInput(name = "remove_photo") { checked = form.removePhoto }
-                            +"Remove photo"
-                        }
-                    }
-                }
-                img(alt = "", classes = "photo-preview") {
-                    attributes["data-photo-preview"] = ""
-                    attributes["hidden"] = ""
-                }
-                div("photo-picker") {
-                    // Needs JavaScript and a camera, so app.js reveals it.
-                    button(type = ButtonType.button, classes = "btn") {
-                        attributes["data-take-photo"] = ""
-                        attributes["hidden"] = ""
-                        icon("camera")
-                        +"Take photo"
-                    }
-                    fileInput(name = "photo") {
-                        id = "photo"
-                        accept = "image/*"
-                        attributes["data-photo-input"] = ""
-                    }
-                }
-                // Phones and tablets open their camera app for this one; app.js moves the photo into the input above.
-                fileInput {
-                    accept = "image/*"
-                    attributes["capture"] = "environment"
-                    attributes["tabindex"] = "-1"
-                    attributes["hidden"] = ""
-                    attributes["data-photo-capture"] = ""
-                }
-                cameraDialog()
-                fileInput(name = "photo_thumb") {
-                    accept = "image/jpeg"
-                    attributes["tabindex"] = "-1"
-                    attributes["hidden"] = ""
-                    attributes["data-photo-thumb"] = ""
-                }
-                if (ai) {
-                    // Needs JavaScript, so app.js reveals it.
-                    div("ai-reader") {
-                        attributes["hidden"] = ""
-                        button(type = ButtonType.button, classes = "btn btn-sm") {
-                            attributes["data-ai-fill"] = item?.takeIf { it.photoVersion != null }?.id?.toString().orEmpty()
-                            icon("sparkles")
-                            +"Fill in with AI"
-                        }
-                        p("hint") { +"Fills in the rest from the photo, the name, or both, with Claude by Anthropic." }
-                        div("ai-status") {
-                            attributes["data-ai-status"] = ""
-                            attributes["role"] = "status"
-                            attributes["hidden"] = ""
-                        }
-                    }
-                } else {
-                    p("hint") {
-                        +"To fill in items from a photo or name with AI, add an Anthropic API key in "
-                        a("/settings") { +"Settings" }
-                        +"."
-                    }
-                }
-            }
             field("Notes", "notes", errors, hint = "Datasheet links, where you bought it, …") {
                 textArea(rows = "4") {
                     id = "notes"
@@ -429,6 +371,93 @@ private suspend fun ApplicationCall.respondItemForm(
                 }
                 a(cancel, classes = "btn btn-ghost") { +"Cancel" }
             }
+        }
+    }
+}
+
+/**
+ * The photo, with buttons to take or choose another. The file input itself works without JavaScript;
+ * app.js hides it behind the Choose photo button and shows what was picked in the tile.
+ */
+private fun FlowContent.photoField(item: Item?, form: ItemForm, errors: Map<String, String>) {
+    field("Photo", "photo", errors) {
+        div("photo-field") {
+            // A larger place to click; the buttons next to it are what screen readers and keyboards use.
+            label("photo-tile") {
+                htmlFor = "photo"
+                attributes["aria-hidden"] = "true"
+                if (item?.photoVersion != null) {
+                    img(alt = "", src = thumbUrl(item), classes = "photo-current")
+                } else {
+                    span("photo-empty") { icon("image") }
+                }
+                img(alt = "", classes = "photo-preview") {
+                    attributes["data-photo-preview"] = ""
+                    attributes["hidden"] = ""
+                }
+            }
+            div("photo-actions") {
+                // Needs JavaScript and a camera, so app.js reveals it.
+                button(type = ButtonType.button, classes = "btn") {
+                    attributes["data-take-photo"] = ""
+                    attributes["hidden"] = ""
+                    icon("camera")
+                    +"Take photo"
+                }
+                fileInput(name = "photo") {
+                    id = "photo"
+                    accept = "image/*"
+                    attributes["data-photo-input"] = ""
+                }
+                label("btn") {
+                    htmlFor = "photo"
+                    attributes["data-choose-photo"] = ""
+                    attributes["hidden"] = ""
+                    icon("image")
+                    +"Choose photo"
+                }
+                if (item?.photoVersion != null) {
+                    label("checkbox") {
+                        checkBoxInput(name = "remove_photo") { checked = form.removePhoto }
+                        +"Remove photo"
+                    }
+                }
+            }
+        }
+        // Phones and tablets open their camera app for this one; app.js moves the photo into the input above.
+        fileInput {
+            accept = "image/*"
+            attributes["capture"] = "environment"
+            attributes["tabindex"] = "-1"
+            attributes["hidden"] = ""
+            attributes["data-photo-capture"] = ""
+        }
+        cameraDialog()
+        fileInput(name = "photo_thumb") {
+            accept = "image/jpeg"
+            attributes["tabindex"] = "-1"
+            attributes["hidden"] = ""
+            attributes["data-photo-thumb"] = ""
+        }
+    }
+}
+
+/** The Fill in with AI button, under the name it reads along with the photo. Needs JavaScript, so app.js reveals it. */
+private fun FlowContent.aiFill(item: Item?) {
+    div("ai-fill") {
+        attributes["hidden"] = ""
+        div("ai-row") {
+            button(type = ButtonType.button, classes = "btn btn-sm btn-ai") {
+                attributes["data-ai-fill"] = item?.takeIf { it.photoVersion != null }?.id?.toString().orEmpty()
+                icon("sparkles")
+                +"Fill in with AI"
+            }
+            span("hint") { +"Fills in the rest from the photo, the name, or both, with Claude by Anthropic." }
+        }
+        div("ai-status") {
+            attributes["data-ai-status"] = ""
+            attributes["role"] = "status"
+            attributes["hidden"] = ""
         }
     }
 }
@@ -493,7 +522,7 @@ private fun FlowContent.propertyRow(property: Property) {
 private fun FlowContent.itemPage(item: Item, tree: LocationTree, here: String) {
     breadcrumbs(tree, item.locationId)
     pageHeader(item.name) {
-        a("/items/${item.id}/edit", classes = "btn") { icon("edit"); span { +"Edit" } }
+        a("/items/${item.id}/edit", classes = "btn btn-compact") { icon("edit"); span { +"Edit" } }
     }
     div(if (item.photoVersion != null) "item-layout has-photo" else "item-layout") {
         if (item.photoVersion != null) {
@@ -505,9 +534,10 @@ private fun FlowContent.itemPage(item: Item, tree: LocationTree, here: String) {
                 dd {
                     quantityControl(item, here, editable = true)
                     if (item.minQuantity != null) {
+                        // The icon shows while the item is low, which app.js updates as the quantity changes.
                         p("hint low-hint") {
-                            if (item.isLowStock) icon("alert")
-                            +"Warns at ${item.minQuantity} or fewer"
+                            icon("alert")
+                            +"Running low at ${item.minQuantity} or fewer"
                         }
                     }
                 }
@@ -529,14 +559,10 @@ private fun FlowContent.itemPage(item: Item, tree: LocationTree, here: String) {
     if (item.properties.isNotEmpty()) {
         section("card") {
             h2 { +"Properties" }
-            table("properties") {
-                tbody {
-                    for (property in item.properties) {
-                        tr {
-                            th { +property.name }
-                            td { linkified(property.value) }
-                        }
-                    }
+            dl("properties") {
+                for (property in item.properties) {
+                    dt { +property.name }
+                    dd { linkified(property.value) }
                 }
             }
         }

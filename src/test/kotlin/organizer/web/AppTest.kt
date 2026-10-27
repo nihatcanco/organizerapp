@@ -110,6 +110,34 @@ class AppTest {
     }
 
     @Test
+    fun `the home page doesn't list an item twice`() = testApplication {
+        val client = client()
+        val low = client.submitForm("/items", parameters {
+            append("name", "Fuse")
+            append("quantity", "1")
+            append("min_quantity", "2")
+        }) { sameOrigin() }.headers[HttpHeaders.Location]!!
+        client.submitForm("/items", parameters { append("name", "Relay") }) { sameOrigin() }
+
+        val home = client.get("/").bodyAsText()
+        assertContains(home, "Running low")
+        assertContains(home, "Relay")
+        assertEquals(1, Regex("""href="$low"""").findAll(home).count())
+    }
+
+    @Test
+    fun `a location's page adds items to it and says which drawers are empty`() = testApplication {
+        val client = client()
+        val cabinetId = client.createLocation("Cabinet").substringAfterLast('/').toLong()
+        client.createLocation("Drawer {1-2}", parent = cabinetId)
+
+        val page = client.get("/locations/$cabinetId").bodyAsText()
+        val header = Regex("""<nav class="topnav">.*?</nav>""", RegexOption.DOT_MATCHES_ALL).find(page)!!.value
+        assertContains(header, "href=\"/items/new?location=$cabinetId\"")
+        assertContains(page, "<span>Empty</span>")
+    }
+
+    @Test
     fun `quantity buttons redirect forms and answer scripts with JSON`() = testApplication {
         val client = client()
         val item = client.submitForm("/items", parameters {
@@ -273,8 +301,10 @@ class AppTest {
     fun `web search is switched on in Settings`() = testApplication {
         val client = client()
         client.saveApiKey("sk-ant-good-0123456789abcdefghij")
-        assertFalse("name=\"web_search\" checked" in client.get("/settings").bodyAsText())
+        val webSearchBox = Regex("""<input[^>]*name="web_search"[^>]*>""")
+        assertFalse("checked" in webSearchBox.find(client.get("/settings").bodyAsText())!!.value)
         client.submitForm("/settings/web-search", parameters { append("web_search", "on") }) { sameOrigin() }
+        assertContains(webSearchBox.find(client.get("/settings").bodyAsText())!!.value, "checked")
         client.submitFormWithBinaryData("/ai/fill", formData { append("name", "AMS1117-3.3") }) { sameOrigin() }
         assertTrue(asked.last().webSearch)
         assertContains(asked.last().text, "You can search the web")

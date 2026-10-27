@@ -33,6 +33,7 @@ private val ICONS = mapOf(
     "tag" to """<path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z"/><circle cx="8" cy="8" r="1.5"/>""",
     "chevron" to """<path d="m9 6 6 6-6 6"/>""",
     "camera" to """<path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/>""",
+    "image" to """<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="9.5" r="1.75"/><path d="m21 15.5-4.5-4.5L6 20"/>""",
     "printer" to """<path d="M7 9V3h10v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M7 14h10v7H7z"/>""",
     "download" to """<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>""",
     "x" to """<path d="M6 6l12 12M18 6 6 18"/>""",

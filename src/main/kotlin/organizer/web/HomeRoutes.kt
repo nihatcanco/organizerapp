@@ -24,7 +24,8 @@ fun Route.homeRoutes(app: Services) {
         }
         val tree = app.locations.tree()
         val lowStock = app.items.search(ItemQuery(lowStock = true), limit = 5)
-        val recent = app.items.recentlyUpdated(limit = 8)
+        // Items already listed as running low aren't repeated.
+        val recent = app.items.recentlyUpdated(limit = 11).filter { item -> lowStock.items.none { it.id == item.id } }.take(6)
         val here = call.request.uri
         call.respondPage(APP_NAME) {
             if (call.queryParam("deleted") == "item") notice("Item deleted.")
