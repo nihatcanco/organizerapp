@@ -157,12 +157,14 @@ suggestions before saving. Choosing a photo for a new item that has no name yet 
 straight away.
 
 Claude searches the web for what the photo or name doesn't say, such as a part's specifications.
-For an item without a photo, it also names up to three pages that show it, preferring the maker's
-or a shop's product page. Organizer downloads those pages' product photos and puts one in the photo
-field, preferring a photo on a white or transparent background. The status line says which site
-it's from. Organizer only downloads from addresses on the public internet, never from this computer
-or the local network, and identifies itself honestly, so shops that block automated downloads
-don't give a photo.
+For an item without a photo, it also names up to five pages from different sites that show it,
+such as the maker's product page, shops and marketplaces. Organizer downloads those pages' product
+photos and puts one in the photo field, preferring a photo on a white or transparent background.
+The status line says which site it's from, or which sites didn't give one. Organizer only downloads
+from addresses on the public internet, never from this computer or the local network, and
+identifies itself honestly, so sites that block automated downloads (many large shops and makers'
+sites answer 403) don't give a photo. **Settings › Logs** shows the pages Claude named and why each
+one didn't work.
 
 To set it up:
 
@@ -251,6 +253,7 @@ must pass the original `Host` header through for that check to work.
 ```
 src/main/kotlin/organizer/
   Main.kt                    entry point and configuration
+  RecentLogs.kt              the latest log lines, kept for the Logs page in Settings
   ai/                        Fill in with AI: the Claude client, the question and its answer, the saved key,
                              photo downloads (WebPhotos.kt)
   db/                        SQLite access and schema migrations

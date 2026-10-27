@@ -72,9 +72,9 @@ internal fun itemQuestion(name: String?, photo: Boolean): String {
     val photosRule = if (photo) {
         ""
     } else {
-        "\n- photos: up to three addresses from your search of pages that show this exact item, best first, such as the maker's product page " +
-            "or a shop's; an image file's own address works too. Prefer ones whose photo shows the item alone on a white or transparent " +
-            "background. [] when no page is surely about this exact item."
+        "\n- photos: up to five addresses from your search of pages that show this exact item, best first, each from a different site, " +
+            "such as the maker's product page, shops and marketplaces; an image file's own address works too. Prefer ones whose photo " +
+            "shows the item alone on a white or transparent background. [] when no page is surely about this exact item."
     }
     return """
         |$task, and answer with only a JSON object on one line. $search; use what you find only when it is surely about this exact item.
@@ -121,7 +121,7 @@ fun suggestItem(answer: String): ItemSuggestion {
         properties = properties(root["properties"]),
         notes = root["notes"].text()?.takeIf { it != name },
         photoPages = root["photos"].items().mapNotNull { it.text() }
-            .filter { it.startsWith("https://") || it.startsWith("http://") }.distinct().take(3),
+            .filter { it.startsWith("https://") || it.startsWith("http://") }.distinct().take(5),
     )
 }
 

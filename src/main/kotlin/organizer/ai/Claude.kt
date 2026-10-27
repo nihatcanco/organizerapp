@@ -17,8 +17,8 @@ import com.anthropic.models.messages.MessageCreateParams
 import com.anthropic.models.messages.StopReason
 import com.anthropic.models.messages.ThinkingConfigDisabled
 import com.anthropic.models.messages.WebSearchTool20250305
-import organizer.model.AiUsage
 import org.slf4j.LoggerFactory
+import organizer.model.AiUsage
 import java.awt.Color
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage

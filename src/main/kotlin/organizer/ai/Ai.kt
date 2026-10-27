@@ -4,6 +4,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import org.slf4j.LoggerFactory
 import organizer.model.AiSpending
 import organizer.store.SecretBox
 import organizer.store.SettingsRepository
@@ -80,7 +81,12 @@ class Ai(
         usage.record(AnthropicClaude.MODEL, answer.usage)
         if (answer.refused) throw AiException("Claude declined to describe this item")
         val suggestion = suggestItem(answer.text)
-        if (image != null || suggestion.photoPages.isEmpty()) return suggestion
+        if (image != null) return suggestion
+        if (suggestion.photoPages.isEmpty()) {
+            log.info("Claude named no pages with a photo of {}", name)
+            return suggestion
+        }
+        log.info("Looking for a photo of {} at {}", name, suggestion.photoPages.joinToString(", "))
         return suggestion.copy(photo = photos.find(suggestion.photoPages))
     }
 
@@ -107,6 +113,7 @@ class Ai(
     }
 
     private companion object {
+        val log = LoggerFactory.getLogger(Ai::class.java)
         const val API_KEY = "anthropic_api_key"
         val KEY_PATTERN = Regex("""sk-ant-[A-Za-z0-9_-]{20,500}""")
     }

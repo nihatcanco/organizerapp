@@ -638,6 +638,33 @@ section.card .card-title h2 { margin: 0; }
 }
 .ai-facts { margin: 14px 0; }
 .ai-facts .hint { display: block; margin: 2px 0 0; }
+/* Logs: one line per entry, with its time, level and where it came from */
+.log-filter { margin: 4px 0 0; }
+.card.log { margin: 14px 0 0; padding: 0; list-style: none; }
+.log-entry {
+  display: grid;
+  grid-template-columns: max-content 3.5rem max-content minmax(0, 1fr);
+  align-items: baseline;
+  gap: 4px 12px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--border);
+  font-size: 0.875rem;
+}
+.log-entry:first-child { border-top: 0; }
+.log-time, .log-source { color: var(--muted); }
+.log-time { font-variant-numeric: tabular-nums; }
+.log-level { color: var(--muted); font-size: 0.75rem; font-weight: 600; }
+.log-warn { background: var(--warn-soft); }
+.log-warn .log-level { color: var(--warn); }
+.log-error { background: var(--danger-soft); }
+.log-error .log-level { color: var(--danger); }
+.log-message { white-space: pre-wrap; overflow-wrap: anywhere; }
+.log-entry details { grid-column: 1 / -1; }
+.log-entry pre { max-height: 320px; margin: 6px 0 0; overflow: auto; font-size: 0.75rem; }
+@media (max-width: 600px) {
+  .log-entry { grid-template-columns: max-content max-content minmax(0, 1fr); }
+  .log-message { grid-column: 1 / -1; }
+}
 .fine-print { display: grid; gap: 6px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); }
 .fine-print .hint { margin: 0; }
 

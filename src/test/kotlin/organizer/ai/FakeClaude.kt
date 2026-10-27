@@ -31,7 +31,7 @@ class FakeClaude(
 }
 
 /** Stands in for [WebPhotos]: has [photo] at every page, and adds the pages it was given to [searched]. */
-class FakePhotos(private val photo: WebPhoto?, val searched: MutableList<List<String>> = mutableListOf()) : PhotoFinder {
+class FakePhotos(var photo: WebPhoto?, val searched: MutableList<List<String>> = mutableListOf()) : PhotoFinder {
     override suspend fun find(urls: List<String>): WebPhoto? {
         searched += urls
         return photo

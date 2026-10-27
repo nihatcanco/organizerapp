@@ -380,11 +380,13 @@
       if (!response.ok) throw new Error(result.error || `the server answered ${response.status}`);
 
       const found = result.name || result.quantity || result.notes || result.photo || (result.tags || []).length || (result.properties || []).length;
-      const filled = fillItemForm(form, result, !photoInput.files.length && !savedPhoto(button));
+      const noPhoto = !photoInput.files.length && !savedPhoto(button);
+      const filled = fillItemForm(form, result, noPhoto);
+      const photoNote = noPhoto && result.photoNote ? ` ${result.photoNote}` : '';
       if (filled.length) {
-        show(`Filled in ${filled.join(', ')}. Please check before saving.`, 'ai-ok');
+        show(`Filled in ${filled.join(', ')}. Please check before saving.${photoNote}`, 'ai-ok');
       } else if (found) {
-        show('Nothing new to fill in: the form already has what Claude found.', 'ai-ok');
+        show(`Nothing new to fill in: the form already has what Claude found.${photoNote}`, 'ai-ok');
       } else {
         show(`No details found. ${hasPhoto ? 'A sharp, close photo works best.' : 'A more specific name may help.'}`, 'ai-warn');
       }

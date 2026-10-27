@@ -9,24 +9,36 @@ import kotlinx.html.ButtonType
 import kotlinx.html.FormMethod
 import kotlinx.html.a
 import kotlinx.html.button
+import kotlinx.html.FlowContent
 import kotlinx.html.code
 import kotlinx.html.dd
+import kotlinx.html.details
 import kotlinx.html.div
 import kotlinx.html.dl
 import kotlinx.html.dt
 import kotlinx.html.form
 import kotlinx.html.h2
 import kotlinx.html.id
+import kotlinx.html.li
+import kotlinx.html.ol
 import kotlinx.html.p
 import kotlinx.html.passwordInput
+import kotlinx.html.pre
 import kotlinx.html.section
 import kotlinx.html.span
 import kotlinx.html.strong
+import kotlinx.html.summary
+import kotlinx.html.time
+import organizer.LogEntry
+import organizer.RecentLogs
 import organizer.ai.Ai
 import organizer.ai.AiException
 import organizer.ai.AnthropicClaude
+import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 fun Route.settingsRoutes(app: Services) {
     get("/settings") { call.respondSettings(app) }
@@ -45,6 +57,12 @@ fun Route.settingsRoutes(app: Services) {
     post("/settings/api-key/remove") {
         app.ai.removeKey()
         call.seeOther("/settings?saved=removed")
+    }
+
+    get("/settings/logs") {
+        val problemsOnly = call.queryParam("show") == "problems"
+        val entries = RecentLogs.entries().filter { !problemsOnly || it.level == "WARN" || it.level == "ERROR" }
+        call.respondPage("Logs") { logsPage(entries, problemsOnly) }
     }
 }
 
@@ -160,5 +178,57 @@ private suspend fun ApplicationCall.respondSettings(app: Services, errors: Map<S
             }
             p("hint") { +"The CSV file has one row per item, with its location, tags and properties, for Excel or Numbers." }
         }
+        section("card") {
+            h2 { +"Logs" }
+            p { +"What Organizer has been doing lately, such as each question to Claude and why a photo couldn't be downloaded." }
+            div("toolbar") { a("/settings/logs", classes = "btn") { +"Show logs" } }
+        }
     }
+}
+
+private fun FlowContent.logsPage(entries: List<LogEntry>, problemsOnly: Boolean) {
+    pageHeader("Logs") {
+        a(if (problemsOnly) "/settings/logs?show=problems" else "/settings/logs", classes = "btn") { +"Refresh" }
+    }
+    p("hint") {
+        +"The latest ${RecentLogs.MAX_ENTRIES} lines since Organizer started, newest first. In Docker, "
+        code { +"docker logs organizer" }
+        +" shows them too, and older ones."
+    }
+    div("chips log-filter") {
+        a("/settings/logs", classes = if (problemsOnly) "chip chip-link" else "chip chip-active") { +"All" }
+        a("/settings/logs?show=problems", classes = if (problemsOnly) "chip chip-active" else "chip chip-link") { +"Warnings and errors" }
+    }
+    if (entries.isEmpty()) {
+        emptyState("Nothing logged", if (problemsOnly) "No warnings or errors since Organizer started." else "Nothing has been logged since Organizer started.")
+        return
+    }
+    ol("card log") {
+        for (entry in entries) {
+            li("log-entry log-${entry.level.lowercase()}") {
+                time("log-time") {
+                    attributes["datetime"] = entry.time.toString()
+                    +formatLogTime(entry.time)
+                }
+                span("log-level") { +entry.level }
+                span("log-source") { +entry.source }
+                div("log-message") { +entry.message }
+                entry.details?.let { trace ->
+                    details {
+                        summary { +"Details" }
+                        pre { +trace }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private val LOG_TIME = DateTimeFormatter.ofPattern("HH:mm:ss", Locale.ENGLISH)
+private val LOG_DAY_TIME = DateTimeFormatter.ofPattern("d MMM HH:mm:ss", Locale.ENGLISH)
+
+/** The time of day, with the date too when it wasn't today. */
+private fun formatLogTime(instant: Instant): String {
+    val time = instant.atZone(ZoneId.systemDefault())
+    return (if (time.toLocalDate() == LocalDate.now()) LOG_TIME else LOG_DAY_TIME).format(time)
 }

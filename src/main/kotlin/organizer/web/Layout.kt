@@ -111,7 +111,7 @@ private fun HTML.page(title: String, path: String, search: SearchBox, addItem: S
                 nav("topnav") {
                     navLink("/locations", "Locations", "folder", current = path.startsWith("/locations") || path == "/labels")
                     navLink("/tags", "Tags", "tag", current = path == "/tags")
-                    navLink("/settings", "Settings", "settings", current = path == "/settings")
+                    navLink("/settings", "Settings", "settings", current = path.startsWith("/settings"))
                     a(addItem, classes = "btn btn-primary") {
                         icon("plus")
                         span { +"Add item" }
