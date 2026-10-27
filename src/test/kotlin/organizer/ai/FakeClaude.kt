@@ -11,15 +11,15 @@ class FakeClaude(
     private val asked: MutableList<Question> = mutableListOf(),
     private val answer: () -> String = { """{"name": "Resistor 10 kΩ", "quantity": 100, "tags": ["resistor"], "properties": {"Package": "0603"}}""" },
 ) : Claude {
-    class Question(val apiKey: String, val text: String, val image: ClaudeImage?)
+    class Question(val apiKey: String, val text: String, val image: ClaudeImage?, val webSearch: Boolean)
 
     override fun check() {
         if (!apiKey.startsWith("sk-ant-good")) throw AiException("Anthropic didn't accept the API key. Check it in Settings")
     }
 
-    override fun ask(question: String, image: ClaudeImage?): Answer {
+    override fun ask(question: String, image: ClaudeImage?, webSearch: Boolean): Answer {
         check()
-        asked += Question(apiKey, question, image)
+        asked += Question(apiKey, question, image, webSearch)
         return Answer(answer(), USAGE)
     }
 
@@ -30,10 +30,13 @@ class FakeClaude(
     }
 }
 
-/** Stands in for [WebPhotos]: has [photo] at every page, and adds the pages it was given to [searched]. */
+/** Stands in for [WebPhotos]: has [photo] at every page, or fails with [error], and adds the pages it was given to [searched]. */
 class FakePhotos(var photo: WebPhoto?, val searched: MutableList<List<String>> = mutableListOf()) : PhotoFinder {
+    var error: Exception? = null
+
     override suspend fun find(urls: List<String>): WebPhoto? {
         searched += urls
+        error?.let { throw it }
         return photo
     }
 }

@@ -36,10 +36,10 @@ interface Claude : AutoCloseable {
     fun check()
 
     /**
-     * Claude's answer to [question] about [image], if there is one; Claude may search the web for it.
-     * Throws [AiException] when there's no answer.
+     * Claude's answer to [question] about [image], if there is one. With [webSearch], Claude may search the web for it,
+     * at about 1¢ a search. Throws [AiException] when there's no answer.
      */
-    fun ask(question: String, image: ClaudeImage?): Answer
+    fun ask(question: String, image: ClaudeImage?, webSearch: Boolean): Answer
 }
 
 /** Claude's [text], unless it [refused] to answer; [usage] is what the question used either way. */
@@ -106,7 +106,7 @@ class AnthropicClaude(apiKey: String) : Claude {
         call { client.models().retrieve(MODEL) }
     }
 
-    override fun ask(question: String, image: ClaudeImage?): Answer {
+    override fun ask(question: String, image: ClaudeImage?, webSearch: Boolean): Answer {
         val started = System.nanoTime()
         val content = listOfNotNull(
             image?.let {
@@ -121,7 +121,7 @@ class AnthropicClaude(apiKey: String) : Claude {
             .maxTokens(2000)
             .thinking(ThinkingConfigDisabled.builder().build())
             .addUserMessageOfContentBlockParams(content)
-            .addTool(WebSearchTool20250305.builder().maxUses(MAX_SEARCHES).build())
+            .apply { if (webSearch) addTool(WebSearchTool20250305.builder().maxUses(MAX_SEARCHES).build()) }
         var inputTokens = 0L
         var outputTokens = 0L
         var searches = 0L

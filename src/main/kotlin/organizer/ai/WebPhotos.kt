@@ -88,6 +88,10 @@ class WebPhotos(private val allowed: (InetAddress) -> Boolean = ::isPublicAddres
     } catch (e: IOException) {
         log.info("No photo from {}: {}", url, e.message)
         null
+    } catch (e: RuntimeException) {
+        // A page this code can't make sense of is no reason to lose the other pages, or the rest of the answer.
+        log.warn("No photo from $url: couldn't read it", e)
+        null
     }
 
     /** The first of the [page]'s product photos that can be downloaded. */
@@ -97,7 +101,7 @@ class WebPhotos(private val allowed: (InetAddress) -> Boolean = ::isPublicAddres
         var failure: IOException? = null
         for (image in images) {
             try {
-                val download = download(image) as? Download.Image ?: throw NoPhoto("it's a page, not an image")
+                val download = download(image, from = page.url) as? Download.Image ?: throw NoPhoto("it's a page, not an image")
                 return check(download.bytes, source)
             } catch (e: IOException) {
                 failure = NoPhoto("its photo $image: ${e.message}")
@@ -111,11 +115,13 @@ class WebPhotos(private val allowed: (InetAddress) -> Boolean = ::isPublicAddres
         class Page(val html: String, val url: HttpUrl) : Download
     }
 
-    private fun download(url: HttpUrl): Download {
+    /** What's at [url]; for a page's photo, [from] is that page, which image servers that stop hotlinking check. */
+    private fun download(url: HttpUrl, from: HttpUrl? = null): Download {
         val request = Request.Builder().url(url)
             .header("User-Agent", USER_AGENT)
             // Image servers that can choose prefer formats Java can read, so the background can be checked.
             .header("Accept", "text/html,image/jpeg,image/png,image/webp;q=0.8,image/gif;q=0.5")
+            .apply { if (from != null) header("Referer", from.toString()) }
             .build()
         client.newCall(request).execute().use { response ->
             val body = response.body
@@ -234,7 +240,7 @@ internal fun pageImages(html: String, page: HttpUrl): List<HttpUrl> {
     }
     for (tag in TAG.findAll(html)) {
         val attributes = ATTRIBUTE.findAll(tag.value).associate { match ->
-            match.groupValues[1].lowercase() to match.groupValues.drop(2).first { it.isNotEmpty() }
+            match.groupValues[1].lowercase() to match.groupValues.drop(2).firstOrNull { it.isNotEmpty() }.orEmpty()
         }
         val image = when (tag.groupValues[1].lowercase()) {
             "meta" -> attributes["content"].takeIf { (attributes["property"] ?: attributes["name"])?.lowercase() in PREVIEW_IMAGES }
@@ -242,7 +248,8 @@ internal fun pageImages(html: String, page: HttpUrl): List<HttpUrl> {
         }
         image?.let(found::add)
     }
-    return found.mapNotNull { page.resolve(unescapeHtml(it).trim()) }.distinct()
+    // An empty address would resolve to the page itself.
+    return found.map { unescapeHtml(it).trim() }.filter { it.isNotEmpty() }.mapNotNull { page.resolve(it) }.distinct()
 }
 
 /** Adds the images of every product in schema.org data to [found]. */

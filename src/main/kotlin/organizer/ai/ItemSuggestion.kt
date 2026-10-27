@@ -18,36 +18,26 @@ data class ItemSuggestion(
     val tags: List<String>,
     val properties: List<Property>,
     val notes: String?,
-    /** Web pages or image files that show the item, best first, when Claude was asked for them. */
-    val photoPages: List<String> = emptyList(),
-    /** The photo found at [photoPages]. */
-    val photo: WebPhoto? = null,
 )
 
 // What Part number means follows the list: written inside it, as "Part number (the maker's)", Claude sometimes
 // copied the remark into the property's name.
+private const val KINDS = "food, a household product, a tool, a spare part, an electronic component or anything else"
+
 private const val PROPERTY_LIST = "Brand, Model, Size, Weight, Volume, Color, Material, Part number, Manufacturer, Package, " +
     "Resistance, Capacitance, Voltage, Tolerance, Power, LCSC part, Digi-Key part, Mouser part. Part number is the maker's own"
 
 /**
  * What Claude is asked about an item, from its photo, its typed [name], or both; [suggestItem] reads the answer.
- * Claude may search the web for what the photo or name doesn't say, and for an item without a photo, names
- * pages that show one.
+ * Claude answers from what it knows, without searching the web.
  */
 internal fun itemQuestion(name: String?, photo: Boolean): String {
     require(photo || name != null) { "Needs a photo or a name" }
     val quoted = name?.let { JsonPrimitive(it).toString() }
-    val kinds = "food, a household product, a tool, a spare part, an electronic component or anything else"
     val task = when {
-        photo && quoted != null -> "This photo shows $quoted, something to add to a home inventory: $kinds. Say what it is, reading any label or packaging"
-        photo -> "This photo shows something to add to a home inventory: $kinds. Say what it is, reading any label or packaging"
-        else -> "Someone is adding $quoted to a home inventory: $kinds. Fill in the rest from what the name says and what you know about this exact item"
-    }
-    val search = if (photo) {
-        "You can search the web to identify the exact item and to check facts that aren't printed on it"
-    } else {
-        "You can search the web to identify the exact item, to check facts that the name doesn't say and to find pages with a photo of it, " +
-            "such as its product page or shop listings"
+        photo && quoted != null -> "This photo shows $quoted, something to add to a home inventory: $KINDS. Say what it is, reading any label or packaging"
+        photo -> "This photo shows something to add to a home inventory: $KINDS. Say what it is, reading any label or packaging"
+        else -> "Someone is adding $quoted to a home inventory: $KINDS. Fill in the rest from what the name says and what you know about this exact item"
     }
     val nameRule = if (quoted != null) {
         "as given."
@@ -61,38 +51,45 @@ internal fun itemQuestion(name: String?, photo: Boolean): String {
         "how many pieces when the name says so (\"pack of 100\" is 100); otherwise null."
     }
     val propertyRule = if (photo) {
-        "facts printed on it or certain from what it is or that you found for this exact item, under these names where they fit, " +
-            "not the label's own: $PROPERTY_LIST. Copy values exactly as printed. Leave out what isn't printed unless it's plain from " +
-            "the item itself or you found it for this exact item, and never guess a brand or manufacturer."
+        "facts printed on it or certain from what it is, under these names where they fit, not the label's own: $PROPERTY_LIST. " +
+            "Copy values exactly as printed. Leave out what isn't printed unless it's plain from the item itself, and never guess a brand or manufacturer."
     } else {
-        "facts the name states or that are always true of this exact item or that you found for it, under these names where they fit: " +
-            "$PROPERTY_LIST. When the name could be several different products, give only what they all share; never guess a value you aren't sure of."
-    }
-    // An item with a photo has one already. Addresses must come from the search: remembered ones are mostly wrong.
-    val photosField = if (photo) "" else """, "photos": []"""
-    val photosRule = if (photo) {
-        ""
-    } else {
-        "\n- photos: a list of up to five addresses, copied exactly from your search results, of pages about this exact item that " +
-            "likely show a photo of it: the maker's product page, shop and marketplace listings, reviews. Each from a different site, " +
-            "best first; an image file's own address works too. If your searches found no such page, search for one. Prefer pages " +
-            "whose photo shows the item alone on a white or transparent background. [] only when no result is about this exact item."
+        "facts the name states or that are always true of this exact item, under these names where they fit: $PROPERTY_LIST. " +
+            "When the name could be several different products, give only what they all share; never guess a value you aren't sure of."
     }
     return """
-        |$task, and answer with only a JSON object on one line. $search; use what you find only when it is surely about this exact item.
-        |{"name": "…", "quantity": null, "tags": [], "properties": {}, "notes": null$photosField}
+        |$task, and answer with only a JSON object on one line:
+        |{"name": "…", "quantity": null, "tags": [], "properties": {}, "notes": null}
         |
         |- name: $nameRule
         |- quantity: $quantityRule
         |- tags: one to three lowercase categories, such as ["food", "fruit"], ["cleaning", "detergent"] or ["resistor", "smd"].
         |- properties: $propertyRule
-        |- notes: one short sentence on what it is or what it's for, or null.$photosRule
+        |- notes: one short sentence on what it is or what it's for, or null.
+    """.trimMargin()
+}
+
+/**
+ * What Claude is asked to find a photo of the item called [name], searching the web; [photoPages] reads the answer.
+ * Addresses must come from the search: ones remembered without it are mostly wrong.
+ */
+internal fun photoQuestion(name: String): String {
+    val quoted = JsonPrimitive(name).toString()
+    return """
+        |Find web pages with a photo of $quoted, something in a home inventory: $KINDS. Search the web for its product page, shop and
+        |marketplace listings or reviews, and answer with only a JSON object on one line:
+        |{"photos": []}
+        |
+        |- photos: a list of up to five addresses, copied exactly from your search results, of pages about this exact item that likely
+        |  show a photo of it. Each from a different site, best first; an image file's own address works too. Prefer the maker's product
+        |  page and pages whose photo shows the item alone on a white or transparent background. [] only when no result is about this
+        |  exact item.
     """.trimMargin()
 }
 
 private val LENIENT = Json { isLenient = true }
 private val NOTHING = setOf("", "null", "none", "n/a", "unknown", "-")
-private val FIELDS = setOf("name", "quantity", "tags", "properties", "notes", "photos")
+private val FIELDS = setOf("name", "quantity", "tags", "properties", "notes")
 
 // Models sometimes copy a label's own key ("Mfr.Part #") instead of the name it was asked to use, or add
 // a remark in brackets ("Part number (the maker's)").
@@ -112,8 +109,7 @@ private fun propertyName(name: String): String = PROPERTY_NAMES.firstOrNull { it
  * around it. Values that are missing, empty or don't fit the form are left out.
  */
 fun suggestItem(answer: String): ItemSuggestion {
-    val json = answer.substringAfter('{', "").substringBeforeLast('}', "")
-    val root = runCatching { LENIENT.parseToJsonElement("{$json}").jsonObject }.getOrElse { JsonObject(emptyMap()) }
+    val root = jsonIn(answer)
     val name = root["name"].text()?.take(200)
     return ItemSuggestion(
         name = name,
@@ -122,9 +118,11 @@ fun suggestItem(answer: String): ItemSuggestion {
             .filter { it.isNotEmpty() }.distinctBy(::normalizeForSearch).take(4),
         properties = properties(root["properties"]),
         notes = root["notes"].text()?.takeIf { it != name },
-        photoPages = root["photos"].items().mapNotNull(::webAddress).distinct().take(5),
     )
 }
+
+/** Reads Claude's answer to [photoQuestion]: the pages it named, best first. */
+fun photoPages(answer: String): List<String> = jsonIn(answer)["photos"].items().mapNotNull(::webAddress).distinct().take(5)
 
 private val BARE_ADDRESS = Regex("""[\w-]+(\.[\w-]+)+(/\S*)?""")
 
@@ -139,6 +137,12 @@ private fun webAddress(element: JsonElement): String? {
         BARE_ADDRESS.matches(text) -> "https://$text"
         else -> null
     }
+}
+
+/** The JSON object in [answer], possibly in a ```json block or with words around it; empty when there's none. */
+private fun jsonIn(answer: String): JsonObject {
+    val json = answer.substringAfter('{', "").substringBeforeLast('}', "")
+    return runCatching { LENIENT.parseToJsonElement("{$json}").jsonObject }.getOrElse { JsonObject(emptyMap()) }
 }
 
 /** Properties as {"Brand": "Persil"}, or as [{"name": "Brand", "value": "Persil"}] in case the model writes them so. */
