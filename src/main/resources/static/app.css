@@ -161,7 +161,7 @@ main.container { padding-top: 20px; padding-bottom: 48px; }
 }
 .searchbar input:focus ~ .search-key,
 .searchbar input:not(:placeholder-shown) ~ .search-key { display: none; }
-@media (hover: none), (pointer: coarse) { .search-key { display: none; } }
+@media (hover: none), (pointer: coarse), (max-width: 760px) { .search-key { display: none; } }
 
 .topnav { display: flex; align-items: center; gap: 2px; }
 .navlink { display: inline-flex; align-items: center; gap: 6px; padding: 8px 10px; border-radius: var(--radius-sm); color: var(--text); font-weight: 500; }
@@ -364,7 +364,7 @@ section.card h2 { margin-bottom: 8px; }
 .item-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .item-name { font-weight: 600; overflow-wrap: anywhere; }
 .item-details { overflow: hidden; color: var(--muted); font-size: 0.85rem; white-space: nowrap; text-overflow: ellipsis; }
-.item-location { overflow: hidden; color: var(--muted); font-size: 0.85rem; white-space: nowrap; text-overflow: ellipsis; }
+.item-location { color: var(--muted); font-size: 0.85rem; overflow-wrap: anywhere; }
 .item-location .icon { width: 1.05em; height: 1.05em; margin-right: 4px; vertical-align: -0.17em; }
 
 .thumb { width: 44px; height: 44px; flex: none; border-radius: 8px; object-fit: cover; background: var(--surface-2); }

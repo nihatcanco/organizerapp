@@ -13,7 +13,7 @@ Kotlin + Ktor on the server, SQLite for storage, server-rendered HTML with a lit
 - **Items** with quantity, tags, free-form properties (`Package: 0805`, `Voltage: 16 V`), notes and a photo.
 - **Quick − / + buttons** to update stock right from any list, plus optional low-stock warnings.
 - **Search** across names, tags, properties and notes. Matches parts of words (`317` finds `LM317T`),
-  ignores case and accents, and updates as you type.
+  ignores case and accents, and updates as you type. Press `/` on any page to jump to it.
 - **QR labels** — print labels for drawers and boxes; scanning one with your phone camera opens that location.
 - **Take photo** — opens the camera on phones, and the webcam on computers (photos are shrunk before uploading).
 - **Fill in with AI** — with an Anthropic API key, Claude recognizes the item from its photo (a bag of
@@ -137,7 +137,7 @@ On the item form, **Take photo** opens the camera:
   the picture, or **Switch camera** if there's more than one. Browsers only let pages use a webcam on
   `localhost` or over HTTPS, so the button appears when you open the app on the computer it runs on
   (`http://localhost:8080`) or through an HTTPS reverse proxy (see [Security](#security)), but not
-  at an address like `http://192.168.1.20:8080`. Choosing a photo file works everywhere.
+  at an address like `http://192.168.1.20:8080`. **Choose photo** works everywhere.
 
 ## Filling in items with AI
 
@@ -152,8 +152,9 @@ Claude Haiku 5.5) works out what the item is from what you give it:
 
 It fills in the name, quantity, tags such as `resistor` and `smd` or `food` and `fruit`, properties
 like brand, size, part number, manufacturer, package and voltage, and a short note. It only fills
-empty fields and never saves anything by itself, so check the suggestions before saving. Choosing a
-photo for a new item that has no name yet fills the form in straight away.
+empty fields, highlights what it filled in, and never saves anything by itself, so check the
+suggestions before saving. Choosing a photo for a new item that has no name yet fills the form in
+straight away.
 
 To set it up:
 
@@ -206,7 +207,7 @@ Everything, photos included, is in one SQLite file, `organizer.db` in the `organ
 Next to it, `secret.key` encrypts the saved API key (see [How the API key is kept](#how-the-api-key-is-kept)).
 A `models/` folder left over from earlier versions, which ran an AI model inside the app, can be deleted.
 
-- **Backup:** use *Download backup* at the bottom of any page. It's safe to do while the app is
+- **Backup:** use *Download backup* in Settings or at the bottom of any page. It's safe to do while the app is
   in use. To restore, stop the app (`docker stop organizer`), then, in the folder
   with the downloaded file, run
   `docker run --rm -v organizer-data:/data -v "${PWD}:/restore" --entrypoint sh organizer -c "rm -f /data/organizer.db-wal && cp /restore/<file> /data/organizer.db"`
