@@ -1,0 +1,15 @@
+# Opens pull requests for newer versions of the libraries, Gradle and its plugins, and the GitHub Actions.
+# The Java base image is pulled fresh by every build instead.
+version: 2
+updates:
+  - package-ecosystem: gradle
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
