@@ -22,7 +22,6 @@ import organizer.model.AiUsage
 import java.awt.Color
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
-import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.time.Duration
 import java.util.Base64
@@ -58,7 +57,8 @@ class ClaudeImage(val mediaType: Base64ImageSource.MediaType, val bytes: ByteArr
         fun of(bytes: ByteArray): ClaudeImage {
             val type = mediaType(bytes)
             if (type != null && bytes.size <= MAX_BYTES) return ClaudeImage(type, bytes)
-            val image = runCatching { ImageIO.read(ByteArrayInputStream(bytes)) }.getOrNull()
+            // Read at up to twice the size it's shrunk to, which keeps the shrinking smooth.
+            val image = readImage(bytes, maxSide = 2 * MAX_SIDE)
                 ?: throw AiException("This kind of image can't be sent to Claude; JPEG, PNG, WebP and GIF work")
             return ClaudeImage(Base64ImageSource.MediaType.IMAGE_JPEG, jpeg(image))
         }

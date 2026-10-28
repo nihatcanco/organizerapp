@@ -8,6 +8,7 @@ import javax.imageio.ImageIO
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
 import kotlin.test.assertSame
 
 class ClaudeImageTest {
@@ -34,5 +35,15 @@ class ClaudeImageTest {
     @Test
     fun `refuses what isn't an image`() {
         assertFailsWith<AiException> { ClaudeImage.of("not an image".toByteArray()) }
+    }
+
+    @Test
+    fun `big images are read at a fraction of their size`() {
+        val big = BufferedImage(4000, 2000, BufferedImage.TYPE_BYTE_GRAY).toPng()
+        val image = readImage(big, maxSide = 500)!!
+        assertEquals(500 to 250, image.width to image.height)
+        val small = BufferedImage(400, 300, BufferedImage.TYPE_BYTE_GRAY).toPng()
+        assertEquals(400 to 300, readImage(small, maxSide = 500)!!.let { it.width to it.height })
+        assertNull(readImage("not an image".toByteArray(), maxSide = 500))
     }
 }

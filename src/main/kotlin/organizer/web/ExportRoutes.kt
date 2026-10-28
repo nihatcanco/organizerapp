@@ -61,9 +61,14 @@ private fun ApplicationCall.downloadAs(filename: String) {
     response.header(HttpHeaders.ContentDisposition, disposition.toString())
 }
 
+// Spreadsheets run a cell that starts with one of these as a formula.
+private val FORMULA_STARTS = setOf('=', '+', '-', '@', '\t', '\r')
+
 private fun StringBuilder.appendCsvRow(vararg values: String) {
     values.joinTo(this, ",") { value ->
-        if (value.any { it == ',' || it == '"' || it == '\n' || it == '\r' }) "\"" + value.replace("\"", "\"\"") + "\"" else value
+        // A ' in front keeps text such as "=HYPERLINK(…)" from being run when the file is opened.
+        val text = if (value.firstOrNull() in FORMULA_STARTS) "'$value" else value
+        if (text.any { it == ',' || it == '"' || it == '\n' || it == '\r' }) "\"" + text.replace("\"", "\"\"") + "\"" else text
     }
     append("\r\n")
 }
