@@ -1,20 +1,32 @@
-# Runs the jar built by `gradlew buildFatJar` (the Jenkinsfile builds and tests it first):
+# Builds Organizer from source and runs it:
 #
-#     ./gradlew buildFatJar
 #     docker build -t organizer .
 #     docker run -d --name organizer --restart unless-stopped -p 18420:18420 -v organizer-data:/data organizer
 #
 # The database, and the key that encrypts the saved API key, are kept in /data; mount a volume there so they
 # survive updates.
+
+FROM eclipse-temurin:21-jdk-noble AS build
+WORKDIR /src
+COPY --chmod=755 gradlew ./
+COPY gradle gradle
+COPY settings.gradle.kts build.gradle.kts gradle.properties ./
+COPY src src
+# The cache keeps Gradle and the libraries between builds. Compiling in Gradle's own process saves starting another.
+RUN --mount=type=cache,target=/root/.gradle \
+    ./gradlew --no-daemon -Pkotlin.compiler.execution.strategy=in-process buildFatJar
+
 FROM eclipse-temurin:21-jre-noble
-# The Jenkinsfile finds the images left over from earlier deploys by this label.
-LABEL org.opencontainers.image.title=organizer
+# The Jenkinsfile finds the images left over from earlier deploys by the title.
+LABEL org.opencontainers.image.title=organizer \
+      org.opencontainers.image.source=https://github.com/nihatcanco/organizerapp \
+      org.opencontainers.image.licenses=MIT
 
 RUN useradd --system --home-dir /app --shell /usr/sbin/nologin organizer \
     && mkdir -p /app /data \
     && chown organizer:organizer /data
 
-COPY build/libs/organizer.jar /app/organizer.jar
+COPY --from=build /src/build/libs/organizer.jar /app/organizer.jar
 COPY --chmod=755 docker/backup.sh /app/backup.sh
 
 # Not 8080, which other apps on the same machine often use.

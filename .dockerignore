@@ -1,5 +1,10 @@
-# The image only needs the built jar and the backup script. Keeping everything else out matters:
-# data/ holds your database and the 550 MB AI model.
+# The image is built from the sources and the backup script only. Keeping everything else out matters:
+# data/ holds your database, and build/ what was built on this computer.
 *
-!build/libs/organizer.jar
-!docker/backup.sh
+!gradlew
+!gradle
+!build.gradle.kts
+!settings.gradle.kts
+!gradle.properties
+!src
+!docker

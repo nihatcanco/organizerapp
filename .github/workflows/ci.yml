@@ -1,0 +1,26 @@
+# Runs the tests and builds the Docker image for every push to main and every pull request.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+      # Also checks that gradle-wrapper.jar is the one Gradle published.
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Test
+        run: ./gradlew test
+      - name: Build the Docker image
+        run: docker build --tag organizer .
