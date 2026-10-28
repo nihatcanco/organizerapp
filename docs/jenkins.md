@@ -23,12 +23,12 @@ Settings are environment variables set in Jenkins, so they aren't kept in the re
 *Manage Jenkins › Nodes › (the node) › Configure › Node Properties*. The next deploy uses them. All are
 optional:
 
-| Variable                             | Default    | Meaning                                                                         |
-|--------------------------------------|------------|---------------------------------------------------------------------------------|
-| `ORGANIZER_PORT`                     | `8080`     | Port the app answers on.                                                        |
-| `ORGANIZER_PUBLIC_URL`               | *(none)*   | Address printed into QR labels, e.g. `http://organizer.lan:8080`.               |
-| `ORGANIZER_PASSWORD_CREDENTIALS_ID`  | *(none)*   | ID of a *Secret text* credential holding the password the app asks for.         |
-| `ORGANIZER_TIME_ZONE`                | UTC        | Time zone for dates, e.g. `Europe/Istanbul` ([list][zones]).                     |
+| Variable                            | Default             | Meaning                                                                 |
+|-------------------------------------|---------------------|-------------------------------------------------------------------------|
+| `ORGANIZER_PORT`                    | `8080`              | Port the app answers on.                                                |
+| `ORGANIZER_PUBLIC_URL`              | *(none)*            | Address printed into QR labels, e.g. `http://organizer.lan:8080`.       |
+| `ORGANIZER_PASSWORD_CREDENTIALS_ID` | *(none)*            | ID of a *Secret text* credential holding the password the app asks for. |
+| `ORGANIZER_TIME_ZONE`               | *(this computer's)* | Time zone for dates, e.g. `Europe/Istanbul` ([list][zones]).            |
 
 For a password, add a *Secret text* credential under *Manage Jenkins › Credentials* and put its ID in
 `ORGANIZER_PASSWORD_CREDENTIALS_ID`. The deploy also passes this machine's MachineGuid as

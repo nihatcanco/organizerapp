@@ -2,7 +2,8 @@
 // isn't a child of the build, so it keeps running after the build ends. See docs/jenkins.md.
 //
 // Settings are environment variables set in Jenkins, not here, so they stay out of the repository (see
-// "Settings" in docs/jenkins.md). Left unset, the app runs on port 8080 without a password.
+// "Settings" in docs/jenkins.md). Left unset, the app runs on port 8080 without a password, in this computer's
+// time zone.
 pipeline {
     agent { label 'windows' }
 
@@ -43,9 +44,28 @@ pipeline {
                     if (!(port ==~ /\d{1,5}/)) {
                         error "ORGANIZER_PORT must be a port number, not '${port}'."
                     }
-                    def timeZone = env.ORGANIZER_TIME_ZONE?.trim() ?: ''
-                    if (!(timeZone ==~ /[A-Za-z0-9_+\/-]*/)) {
-                        error "ORGANIZER_TIME_ZONE must be a name such as Europe/Istanbul, not '${timeZone}'."
+                    def zoneName = /[A-Za-z0-9_+\/-]+/
+                    def timeZone = env.ORGANIZER_TIME_ZONE?.trim()
+                    if (timeZone) {
+                        if (!(timeZone ==~ zoneName)) {
+                            error "ORGANIZER_TIME_ZONE must be a name such as Europe/Istanbul, not '${timeZone}'."
+                        }
+                    } else {
+                        // This Windows machine's time zone. Java turns the Windows zone, such as "Turkey Standard
+                        // Time", into the name Linux uses, such as Europe/Istanbul. For a zone it has no name for,
+                        // it gives an offset such as GMT+03:00, which Linux would read as 3 hours west, so that
+                        // falls back to UTC.
+                        dir(pwd(tmp: true)) {
+                            writeFile file: 'TimeZoneId.java', text: 'class TimeZoneId { public static void main(String[] a) { ' +
+                                'System.out.print(java.util.TimeZone.getDefault().getID()); } }'
+                            timeZone = bat(returnStdout: true,
+                                script: '@"%JAVA_HOME%\\bin\\java" TimeZoneId.java 2>nul & exit /b 0').trim()
+                        }
+                        if (!(timeZone ==~ zoneName)) {
+                            echo "Couldn't tell this computer's time zone ('${timeZone}'), so dates are in UTC. " +
+                                'Set ORGANIZER_TIME_ZONE in Jenkins to choose one.'
+                            timeZone = ''
+                        }
                     }
                     def passwordId = env.ORGANIZER_PASSWORD_CREDENTIALS_ID?.trim()
 
