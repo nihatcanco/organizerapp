@@ -18,13 +18,11 @@ import okhttp3.Request
 import okhttp3.ResponseBody
 import org.slf4j.LoggerFactory
 import java.awt.image.BufferedImage
-import java.io.ByteArrayInputStream
 import java.io.IOException
 import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.UnknownHostException
 import java.time.Duration
-import javax.imageio.ImageIO
 import kotlin.math.max
 import kotlin.math.min
 
@@ -140,7 +138,7 @@ class WebPhotos(private val allowed: (InetAddress) -> Boolean = ::isPublicAddres
     /** The photo in [bytes] if it is one, big enough not to be an icon or a logo. */
     private fun check(bytes: ByteArray, source: String): Found {
         val type = photoType(bytes) ?: throw NoPhoto("not a JPEG, PNG, WebP or GIF image")
-        val image = runCatching { ImageIO.read(ByteArrayInputStream(bytes)) }.getOrNull()
+        val image = readImage(bytes, maxSide = MAX_DECODED_SIDE)
         return when {
             // Java can't read WebP, so its size and background stay unknown.
             image == null && bytes.size < MIN_UNREADABLE_BYTES -> throw NoPhoto("the image is too small to be a photo")
@@ -161,6 +159,7 @@ class WebPhotos(private val allowed: (InetAddress) -> Boolean = ::isPublicAddres
         const val MAX_PAGE_BYTES = 2L * 1024 * 1024 // product photos are named near the top
         const val MAX_PHOTO_BYTES = 8L * 1024 * 1024
         const val MIN_SIDE = 200
+        const val MAX_DECODED_SIDE = 2000 // enough to tell the background; larger photos are read at a fraction
         const val MIN_UNREADABLE_BYTES = 10_000
         const val PLAIN = 0.9
     }

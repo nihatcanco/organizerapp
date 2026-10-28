@@ -7,6 +7,7 @@ import io.ktor.client.request.forms.formData
 import io.ktor.client.request.forms.submitForm
 import io.ktor.client.request.forms.submitFormWithBinaryData
 import io.ktor.client.request.get
+import io.ktor.client.request.head
 import io.ktor.client.request.header
 import io.ktor.client.statement.bodyAsBytes
 import io.ktor.client.statement.bodyAsText
@@ -187,6 +188,19 @@ class AppTest {
     }
 
     @Test
+    fun `a photo over the size limit gets a page saying so`() = testApplication {
+        val response = client().submitFormWithBinaryData("/items", formData {
+            append("name", "Huge")
+            append("photo", ByteArray(MAX_UPLOAD_BYTES.toInt() + 1), Headers.build {
+                append(HttpHeaders.ContentType, "image/jpeg")
+                append(HttpHeaders.ContentDisposition, "filename=\"huge.jpg\"")
+            })
+        }) { sameOrigin() }
+        assertEquals(HttpStatusCode.PayloadTooLarge, response.status)
+        assertContains(response.bodyAsText(), "That photo is too large")
+    }
+
+    @Test
     fun `posts from other websites are rejected`() = testApplication {
         val response = client().submitForm("/locations", parameters { append("name", "Sneaky") }) {
             sameOrigin(origin = "http://evil.example")
@@ -204,6 +218,23 @@ class AppTest {
     }
 
     @Test
+    fun `after too many wrong passwords even the right one has to wait`() = testApplication {
+        val client = client(AppConfig(password = "secret"))
+        repeat(PasswordGuesses.MAX_WRONG) {
+            assertEquals(HttpStatusCode.Unauthorized, client.get("/") { basicAuth("me", "guess $it") }.status)
+        }
+        val response = client.get("/") { basicAuth("me", "secret") }
+        assertEquals(HttpStatusCode.TooManyRequests, response.status)
+        assertEquals("60", response.headers[HttpHeaders.RetryAfter])
+        assertContains(response.bodyAsText(), "Too many wrong passwords")
+    }
+
+    @Test
+    fun `HEAD requests are answered like GET`() = testApplication {
+        assertEquals(HttpStatusCode.OK, client().head("/").status)
+    }
+
+    @Test
     fun `labels hold QR codes that link to the public address`() = testApplication {
         val client = client(AppConfig(publicUrl = "http://organizer.lan:8080"))
         val cabinet = client.createLocation("Cabinet")
@@ -217,9 +248,12 @@ class AppTest {
     fun `exports produce CSV and a SQLite backup`() = testApplication {
         val client = client()
         client.submitForm("/items", parameters { append("name", "Relay, 5 V") }) { sameOrigin() }
+        client.submitForm("/items", parameters { append("name", "=HYPERLINK(\"http://evil.example\")") }) { sameOrigin() }
 
         val csv = client.get("/export/items.csv").bodyAsText()
         assertContains(csv, "\"Relay, 5 V\"")
+        // Spreadsheets would run it as a formula without the ' in front.
+        assertContains(csv, "\"'=HYPERLINK(\"\"http://evil.example\"\")\"")
 
         val backup = client.get("/export/backup")
         assertEquals(HttpStatusCode.OK, backup.status)

@@ -22,6 +22,15 @@ const val MAX_UPLOAD_BYTES = 20L * 1024 * 1024
 
 class UploadTooLargeException : RuntimeException("Upload too large")
 
+/**
+ * Whether [error] comes from an upload over [MAX_UPLOAD_BYTES]. Ktor's multipart parser reports a part over its
+ * formFieldLimit as an IOException ("... limit ... exceeded"). The parser runs in a coroutine of its own, so that error
+ * fails the whole call: it reaches StatusPages, not the code reading the form.
+ */
+fun isUploadTooLarge(error: Throwable): Boolean = generateSequence(error) { it.cause }.any {
+    it is UploadTooLargeException || (it is IOException && it.message?.contains("limit", ignoreCase = true) == true)
+}
+
 /** Submitted form values, trimmed, with an empty string for anything missing. */
 class FormFields(private val values: Map<String, List<String>>) {
     constructor(parameters: Parameters) : this(parameters.entries().associate { it.key to it.value })
@@ -42,26 +51,21 @@ suspend fun ApplicationCall.receiveSubmission(): Submission {
     if (!request.isMultipart()) return Submission(FormFields(receiveParameters()), emptyMap())
     val fields = mutableMapOf<String, MutableList<String>>()
     val files = mutableMapOf<String, Upload>()
-    try {
-        receiveMultipart(formFieldLimit = MAX_UPLOAD_BYTES).forEachPart { part ->
-            try {
-                when (part) {
-                    is PartData.FormItem -> fields.getOrPut(part.name.orEmpty()) { mutableListOf() }.add(part.value)
-                    is PartData.FileItem -> {
-                        val bytes = part.provider().readBuffer(MAX_UPLOAD_BYTES + 1).readByteArray()
-                        if (bytes.size > MAX_UPLOAD_BYTES) throw UploadTooLargeException()
-                        if (bytes.isNotEmpty()) files[part.name.orEmpty()] = Upload(part.contentType, bytes)
-                    }
-                    else -> Unit
+    // A part over formFieldLimit fails the call with Ktor's own error; StatusPages tells it apart (see isUploadTooLarge).
+    receiveMultipart(formFieldLimit = MAX_UPLOAD_BYTES).forEachPart { part ->
+        try {
+            when (part) {
+                is PartData.FormItem -> fields.getOrPut(part.name.orEmpty()) { mutableListOf() }.add(part.value)
+                is PartData.FileItem -> {
+                    val bytes = part.provider().readBuffer(MAX_UPLOAD_BYTES + 1).readByteArray()
+                    if (bytes.size > MAX_UPLOAD_BYTES) throw UploadTooLargeException()
+                    if (bytes.isNotEmpty()) files[part.name.orEmpty()] = Upload(part.contentType, bytes)
                 }
-            } finally {
-                part.release()
+                else -> Unit
             }
+        } finally {
+            part.release()
         }
-    } catch (e: IOException) {
-        // Ktor's multipart parser reports a part over formFieldLimit as "... limit ... exceeded".
-        if (e.message?.contains("limit", ignoreCase = true) == true) throw UploadTooLargeException()
-        throw e
     }
     return Submission(FormFields(fields), files)
 }
