@@ -247,6 +247,7 @@ private suspend fun ApplicationCall.respondItemForm(
 ) {
     val tagSuggestions = app.items.tags().sortedByDescending { it.count }.take(20).map { it.name }
     val propertyNames = app.items.propertyNames()
+    val itemNames = app.items.names().filter { it != item?.name }
     val ai = app.ai.enabled()
     val title = if (item == null) "Add item" else "Edit item"
     val location = form.locationId.toLongOrNull()
@@ -283,6 +284,13 @@ private suspend fun ApplicationCall.respondItemForm(
                     autoFocus = item == null
                     placeholder = "e.g. 10 kΩ resistor"
                     attributes["autocomplete"] = "off"
+                    if (itemNames.isNotEmpty()) attributes["list"] = "item-names"
+                }
+                if (itemNames.isNotEmpty()) {
+                    dataList {
+                        id = "item-names"
+                        for (name in itemNames) option { value = name }
+                    }
                 }
             }
             if (ai) {

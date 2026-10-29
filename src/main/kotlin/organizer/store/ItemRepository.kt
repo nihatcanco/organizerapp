@@ -85,6 +85,11 @@ class ItemRepository(private val db: Database) {
         }
     }.sortedWith(compareBy(NaturalOrder) { it.name })
 
+    /** Names of existing items, offered as suggestions while typing a name in the item form. */
+    suspend fun names(): List<String> = db.read { c ->
+        c.query("SELECT name FROM items GROUP BY name ORDER BY max(updated_at) DESC LIMIT 1000") { it.getString(1) }
+    }.sortedWith(NaturalOrder)
+
     /** Property names already in use, most common first, offered as suggestions in the item form. */
     suspend fun propertyNames(): List<String> = db.read { c ->
         c.query("SELECT name FROM item_properties GROUP BY name ORDER BY count(*) DESC, name LIMIT 200") { it.getString(1) }

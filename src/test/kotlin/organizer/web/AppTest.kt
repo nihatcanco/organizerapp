@@ -151,6 +151,22 @@ class AppTest {
     }
 
     @Test
+    fun `the name field suggests the names of other items`() = testApplication {
+        val client = client()
+        assertFalse("item-names" in client.get("/items/new").bodyAsText())
+        val fuse = client.submitForm("/items", parameters { append("name", "Fuse") }) { sameOrigin() }.headers[HttpHeaders.Location]!!
+        client.submitForm("/items", parameters { append("name", "Relay") }) { sameOrigin() }
+
+        val form = client.get("/items/new").bodyAsText()
+        assertContains(form, "list=\"item-names\"")
+        assertContains(form, "<option value=\"Fuse\">")
+        assertContains(form, "<option value=\"Relay\">")
+        val edit = client.get("$fuse/edit").bodyAsText()
+        assertFalse("<option value=\"Fuse\">" in edit)
+        assertContains(edit, "<option value=\"Relay\">")
+    }
+
+    @Test
     fun `quantity buttons redirect forms and answer scripts with JSON`() = testApplication {
         val client = client()
         val item = client.submitForm("/items", parameters {
