@@ -28,6 +28,8 @@ dependencies {
     implementation("io.ktor:ktor-server-auth")
     implementation("io.ktor:ktor-server-auto-head-response")
     implementation("io.ktor:ktor-server-csrf")
+    // Makes the self-signed certificate for HTTPS.
+    implementation("io.ktor:ktor-network-tls-certificates")
     implementation("org.xerial:sqlite-jdbc:3.53.4.0")
     implementation("com.google.zxing:core:3.5.4")
     implementation("com.anthropic:anthropic-java:3.3.0")

@@ -3,7 +3,7 @@
 //
 // Settings are environment variables set in Jenkins, not here, so they stay out of the repository (see
 // "Settings" in docs/jenkins.md). Left unset, the app runs on port 8080 without a password, in this computer's
-// time zone.
+// time zone. Whether it uses HTTPS is a parameter of the build instead.
 pipeline {
     agent { label 'windows' }
 
@@ -11,6 +11,11 @@ pipeline {
         buildDiscarder(logRotator(numToKeepStr: '20'))
         disableConcurrentBuilds()
         timeout(time: 30, unit: 'MINUTES')
+    }
+
+    parameters {
+        booleanParam(name: 'ORGANIZER_HTTPS', defaultValue: true,
+            description: 'Answer over HTTPS, with a self-signed certificate, instead of HTTP (see README.md).')
     }
 
     triggers {
@@ -44,6 +49,9 @@ pipeline {
                     if (!(port ==~ /\d{1,5}/)) {
                         error "ORGANIZER_PORT must be a port number, not '${port}'."
                     }
+                    // Builds started by polling use the default.
+                    def https = params.ORGANIZER_HTTPS ? 'true' : 'false'
+                    def scheme = params.ORGANIZER_HTTPS ? 'https' : 'http'
                     def zoneName = /[A-Za-z0-9_+\/-]+/
                     def timeZone = env.ORGANIZER_TIME_ZONE?.trim()
                     if (timeZone) {
@@ -91,6 +99,8 @@ pipeline {
                     // container, where it means the time zone; Windows programs read it differently.
                     def settings = [
                         "ORGANIZER_PORT=${port}",
+                        "ORGANIZER_HTTPS=${https}",
+                        "ORGANIZER_SCHEME=${scheme}",
                         "ORGANIZER_PUBLIC_URL=${env.ORGANIZER_PUBLIC_URL?.trim() ?: ''}",
                         "ORGANIZER_TIME_ZONE=${timeZone}",
                         "ORGANIZER_MACHINE_ID=${machineId}",
@@ -99,7 +109,7 @@ pipeline {
                         def start = {
                             bat 'docker run --detach --name organizer --restart unless-stopped ' +
                                 '--publish %ORGANIZER_PORT%:%ORGANIZER_PORT% --volume organizer-data:/data ' +
-                                '--env ORGANIZER_PORT --env ORGANIZER_PUBLIC_URL --env ORGANIZER_MACHINE_ID --env ORGANIZER_PASSWORD ' +
+                                '--env ORGANIZER_PORT --env ORGANIZER_HTTPS --env ORGANIZER_PUBLIC_URL --env ORGANIZER_MACHINE_ID --env ORGANIZER_PASSWORD ' +
                                 '--env TZ=%ORGANIZER_TIME_ZONE% organizer'
                         }
                         if (passwordId) {
@@ -114,8 +124,9 @@ pipeline {
                             timeout(time: 90, unit: 'SECONDS') {
                                 waitUntil {
                                     // 000 while it isn't listening yet; 401 means it's up and asking for the password.
+                                    // -k: over HTTPS the app's certificate is self-signed.
                                     def status = bat(returnStdout: true,
-                                        script: '@curl -s -o nul -w "%%{http_code}" http://127.0.0.1:%ORGANIZER_PORT%/ & exit /b 0').trim()
+                                        script: '@curl -s -k -o nul -w "%%{http_code}" %ORGANIZER_SCHEME%://127.0.0.1:%ORGANIZER_PORT%/ & exit /b 0').trim()
                                     status in ['200', '401']
                                 }
                             }
@@ -127,7 +138,7 @@ pipeline {
 
                     // Images left without a tag by earlier deploys.
                     bat 'docker image prune --force --filter label=org.opencontainers.image.title=organizer'
-                    echo "Organizer is running: http://localhost:${port} (logs: docker logs organizer)"
+                    echo "Organizer is running: ${scheme}://localhost:${port} (logs: docker logs organizer)"
                 }
             }
         }

@@ -84,6 +84,7 @@ Everything is optional and set through environment variables, passed to the cont
 | `ORGANIZER_MACHINE_ID` | *(found by the app)*                           | This computer's ID, which the saved API key is tied to; needed in Docker (see [How the API key is kept](#how-the-api-key-is-kept)). |
 | `TZ`                   | UTC in Docker                                  | Time zone for dates, e.g. `Europe/Berlin`.                                    |
 | `ORGANIZER_PORT`       | `8080`                                         | Port the app answers on. In Docker, change the first port of `-p` instead, e.g. `-p 9000:8080`.  |
+| `ORGANIZER_HTTPS`      | `false`                                        | `true` answers over HTTPS instead of HTTP. See [HTTPS](#https).               |
 | `ORGANIZER_HOST`       | `0.0.0.0`                                      | Address to listen on; `127.0.0.1` lets only this computer in.                  |
 | `ORGANIZER_DB`         | `/data/organizer.db` in Docker, `data/organizer.db` otherwise | The database file; `secret.key` is kept next to it.            |
 
@@ -98,8 +99,29 @@ On the item form, **Take photo** opens the camera:
 - On a computer with a webcam it shows the camera on the page. Press **Take photo** (or Enter) to use
   the picture, or **Switch camera** if there's more than one. Browsers only let pages use a webcam on
   `localhost` or over HTTPS, so the button appears when you open the app on the computer it runs on
-  (`http://localhost:8080`) or through an HTTPS reverse proxy (see [Security](#security)), but not
-  at an address like `http://192.168.1.20:8080`. **Choose photo** works everywhere.
+  (`http://localhost:8080`) or over [HTTPS](#https), but not at an address like
+  `http://192.168.1.20:8080`. **Choose photo** works everywhere.
+
+## HTTPS
+
+To use the webcam from another computer on your network, turn on HTTPS. The app then answers over
+HTTPS instead of HTTP, on the same port:
+
+```sh
+docker run -d --name organizer --restart unless-stopped -p 8080:8080 \
+  -e ORGANIZER_HTTPS=true -v organizer-data:/data organizer
+```
+
+and you open `https://192.168.1.20:8080`; `http://` addresses stop working. The app makes its own
+certificate, `https.p12` in the volume, so the browser warns about it the first time: choose
+*Advanced* and continue (Chrome, Edge, Safari), or *Accept the risk* (Firefox), once on each device.
+QR labels point to HTTPS too, so a phone that scans one gets the warning the first time as well.
+
+The certificate names `localhost`, this computer's network addresses and the address in
+`ORGANIZER_PUBLIC_URL`. In Docker the app can't see the computer's addresses, so if you want the
+certificate to name yours, set `-e ORGANIZER_PUBLIC_URL=https://192.168.1.20:8080`. Continuing past
+the warning works either way. A new certificate is made when that address changes and before the
+old one expires (after about two years), and then the browser warns once more.
 
 ## Filling in items with AI
 

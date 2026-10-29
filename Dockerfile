@@ -4,7 +4,7 @@
 #     docker run -d --name organizer --restart unless-stopped -p 8080:8080 -v organizer-data:/data organizer
 #
 # The database, and the key that encrypts the saved API key, are kept in /data; mount a volume there so they
-# survive updates.
+# survive updates. Add -e ORGANIZER_HTTPS=true to answer over HTTPS instead of HTTP.
 
 FROM eclipse-temurin:21-jdk-noble AS build
 WORKDIR /src

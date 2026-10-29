@@ -37,6 +37,14 @@ For a password, add a *Secret text* credential under *Manage Jenkins › Credent
 
 [zones]: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
 
+## HTTPS
+
+The app answers over [HTTPS](../README.md#https) unless you turn it off: that's the `ORGANIZER_HTTPS`
+parameter of the job, on by default. Deploys that start by themselves after a commit use the default, so
+to go back to plain HTTP for good, change `defaultValue` in the [`Jenkinsfile`](../Jenkinsfile). For a
+single deploy, use *Build with Parameters* and clear the box. Jenkins only shows that option after the
+job has run once with this Jenkinsfile.
+
 ## The Windows machine needs
 
 - Windows 10 (1803 or later)/11 or Windows Server 2019 or newer, 64-bit (x64). The deploy uses the
