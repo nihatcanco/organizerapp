@@ -34,7 +34,7 @@ dependencies {
     implementation("com.google.zxing:core:3.5.4")
     implementation("com.anthropic:anthropic-java:3.3.0")
     // Downloads item photos; the same version the Anthropic client already brings along.
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp:5.5.1")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
     implementation("ch.qos.logback:logback-classic:1.6.5")
 
