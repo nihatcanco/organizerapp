@@ -521,6 +521,138 @@
     input.addEventListener('input', () => syncTagChips(input));
   }
 
+  // ---------- Name suggestions: an app-styled menu in place of the browser's own <datalist> dropdown ----------
+
+  const suggestMenu = document.createElement('ul');
+  suggestMenu.className = 'suggest-menu';
+  suggestMenu.id = 'suggest-menu';
+  suggestMenu.setAttribute('role', 'listbox');
+  suggestMenu.hidden = true;
+  document.body.append(suggestMenu);
+  let suggestInput = null;
+  let suggestActive = -1;
+
+  // Copied property rows keep data-suggest, so they get the menu too.
+  for (const input of document.querySelectorAll('input[list]')) {
+    input.dataset.suggest = input.getAttribute('list');
+    input.removeAttribute('list');
+  }
+
+  function suggestionsFor(input, all) {
+    const typed = input.value.trim().toLowerCase();
+    const options = [...(document.getElementById(input.dataset.suggest)?.options || [])].map((option) => option.value);
+    if (!typed) return all ? options.slice(0, 8) : [];
+    const starts = [];
+    const contains = [];
+    for (const value of options) {
+      const lower = value.toLowerCase();
+      if (lower === typed) continue;
+      if (lower.startsWith(typed)) starts.push(value);
+      else if (lower.includes(typed)) contains.push(value);
+    }
+    return [...starts, ...contains].slice(0, 8);
+  }
+
+  function openSuggestions(input, all = false) {
+    const values = suggestionsFor(input, all);
+    if (values.length === 0) return closeSuggestions();
+    const typed = input.value.trim();
+    suggestMenu.replaceChildren(...values.map((value, i) => {
+      const option = document.createElement('li');
+      option.id = `suggest-option-${i}`;
+      option.setAttribute('role', 'option');
+      option.dataset.value = value;
+      const at = typed ? value.toLowerCase().indexOf(typed.toLowerCase()) : -1;
+      if (at < 0) {
+        option.textContent = value;
+      } else {
+        const mark = document.createElement('mark');
+        mark.textContent = value.slice(at, at + typed.length);
+        option.append(value.slice(0, at), mark, value.slice(at + typed.length));
+      }
+      return option;
+    }));
+    suggestInput = input;
+    suggestActive = -1;
+    input.setAttribute('aria-expanded', 'true');
+    input.setAttribute('aria-controls', suggestMenu.id);
+    input.removeAttribute('aria-activedescendant');
+    suggestMenu.hidden = false;
+    placeSuggestions();
+  }
+
+  function closeSuggestions() {
+    if (!suggestInput) return;
+    suggestInput.setAttribute('aria-expanded', 'false');
+    suggestInput.removeAttribute('aria-activedescendant');
+    suggestMenu.hidden = true;
+    suggestInput = null;
+  }
+
+  function placeSuggestions() {
+    if (!suggestInput) return;
+    const box = suggestInput.getBoundingClientRect();
+    const width = Math.max(box.width, Math.min(240, document.documentElement.clientWidth - 16));
+    const left = Math.min(box.left, document.documentElement.clientWidth - width - 8);
+    suggestMenu.style.width = `${width}px`;
+    suggestMenu.style.left = `${Math.max(8, left) + window.scrollX}px`;
+    suggestMenu.style.top = `${box.bottom + 4 + window.scrollY}px`;
+  }
+
+  function highlightSuggestion(index) {
+    const options = suggestMenu.children;
+    suggestActive = (index + options.length) % options.length;
+    for (const [i, option] of [...options].entries()) option.setAttribute('aria-selected', String(i === suggestActive));
+    const active = options[suggestActive];
+    suggestInput.setAttribute('aria-activedescendant', active.id);
+    active.scrollIntoView({ block: 'nearest' });
+  }
+
+  function chooseSuggestion(option) {
+    const input = suggestInput;
+    closeSuggestions();
+    input.value = option.dataset.value;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  for (const input of document.querySelectorAll('input[data-suggest]')) {
+    input.setAttribute('role', 'combobox');
+    input.setAttribute('aria-autocomplete', 'list');
+    input.setAttribute('aria-expanded', 'false');
+  }
+
+  document.addEventListener('input', (event) => {
+    if (event.isTrusted && event.target.matches('input[data-suggest]')) openSuggestions(event.target);
+  });
+  document.addEventListener('focusout', (event) => {
+    if (event.target === suggestInput) closeSuggestions();
+  });
+  document.addEventListener('keydown', (event) => {
+    const input = event.target;
+    if (!input.matches || !input.matches('input[data-suggest]')) return;
+    const open = suggestInput === input;
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      if (!open) openSuggestions(input, true);
+      if (suggestInput !== input) return;
+      event.preventDefault();
+      const down = event.key === 'ArrowDown';
+      highlightSuggestion(suggestActive < 0 ? (down ? 0 : -1) : suggestActive + (down ? 1 : -1));
+    } else if (event.key === 'Enter' && open && suggestActive >= 0) {
+      event.preventDefault();
+      chooseSuggestion(suggestMenu.children[suggestActive]);
+    } else if (event.key === 'Escape' && open) {
+      event.preventDefault();
+      closeSuggestions();
+    }
+  });
+  // Keeps focus in the field, so picking a suggestion doesn't close the menu first.
+  suggestMenu.addEventListener('pointerdown', (event) => event.preventDefault());
+  suggestMenu.addEventListener('click', (event) => {
+    const option = event.target.closest('[role="option"]');
+    if (option) chooseSuggestion(option);
+  });
+  window.addEventListener('resize', placeSuggestions);
+
   // ---------- Press / to search ----------
 
   document.addEventListener('keydown', (event) => {

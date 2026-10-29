@@ -19,6 +19,7 @@
   --danger-soft: #fdecea;
   --focus: #14b8a6;
   --shadow: 0 1px 2px rgb(16 24 40 / 5%), 0 1px 3px rgb(16 24 40 / 7%);
+  --shadow-raised: 0 8px 24px rgb(16 24 40 / 12%), 0 2px 6px rgb(16 24 40 / 8%);
   --radius: 12px;
   --radius-sm: 10px;
 }
@@ -42,6 +43,7 @@
     --danger-soft: #3a1717;
     --focus: #5eead4;
     --shadow: 0 1px 2px rgb(0 0 0 / 40%);
+    --shadow-raised: 0 8px 24px rgb(0 0 0 / 50%);
   }
 }
 
@@ -534,6 +536,25 @@ input:focus, select:focus, textarea:focus {
 }
 .property-editor > .btn { align-self: flex-start; }
 .suggestions { margin-top: 2px; }
+
+/* Name suggestions under a field (see app.js) */
+.suggest-menu {
+  position: absolute;
+  z-index: 20;
+  max-height: min(320px, 50vh);
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-raised);
+}
+.suggest-menu li { padding: 8px 10px; border-radius: 6px; cursor: pointer; overflow-wrap: anywhere; }
+@media (hover: hover) { .suggest-menu li:hover { background: var(--surface-2); } }
+.suggest-menu li[aria-selected="true"] { background: var(--accent-soft); color: var(--text); }
+.suggest-menu mark { background: none; color: inherit; font-weight: 650; }
 
 input[type="file"] { max-width: 100%; color: var(--muted); font: inherit; font-size: 0.95rem; }
 input[type="file"]::file-selector-button {
