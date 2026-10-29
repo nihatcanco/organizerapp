@@ -27,7 +27,9 @@ class HttpsTest {
     fun `makes a certificate once and keeps it while it covers the names`() {
         val first = certificate(listOf("localhost", "127.0.0.1", "192.168.1.20"))
         assertTrue(file.exists())
-        assertEquals(setOf(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE), Files.getPosixFilePermissions(file))
+        if ("posix" in file.fileSystem.supportedFileAttributeViews()) {
+            assertEquals(setOf(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE), Files.getPosixFilePermissions(file))
+        }
         assertEquals("SHA256withRSA", first.sigAlgName)
         assertEquals(
             setOf("localhost", "127.0.0.1", "192.168.1.20"),
