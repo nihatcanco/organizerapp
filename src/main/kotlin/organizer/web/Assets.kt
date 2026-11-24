@@ -7,7 +7,7 @@ import java.util.zip.CRC32
 object Assets {
     private val version: String by lazy {
         val crc = CRC32()
-        for (name in listOf("app.css", "app.js", "icon.svg")) {
+        for (name in listOf("app.css", "app.js", "icon.svg", "apple-touch-icon.png")) {
             Assets::class.java.getResourceAsStream("/static/$name")?.use { crc.update(it.readBytes()) }
         }
         crc.value.toString(36)

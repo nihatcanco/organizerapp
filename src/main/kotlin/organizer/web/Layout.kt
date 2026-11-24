@@ -77,6 +77,8 @@ private fun HTML.page(title: String, path: String, search: SearchBox, addItem: S
         meta(name = "color-scheme", content = "light dark")
         title(if (title == APP_NAME) APP_NAME else "$title · $APP_NAME")
         link(rel = "icon", type = "image/svg+xml", href = Assets.url("icon.svg"))
+        // Safari's "Add to Dock" and iOS's "Add to Home Screen" ignore SVG icons and use this PNG instead.
+        link(rel = "apple-touch-icon", href = Assets.url("apple-touch-icon.png"))
         link(rel = "stylesheet", href = Assets.url("app.css"))
         script(src = Assets.url("app.js")) { defer = true }
     }
